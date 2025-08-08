@@ -1,0 +1,13 @@
+langchain
+langchain-core
+langchain-community
+langchain-experimental
+langchain-google-genai
+langchain-chroma
+google-generativeai
+python-dotenv
+tqdm
+unstructured[pdf,ocr]
+pytesseract
+pymupdf
+chromadb
