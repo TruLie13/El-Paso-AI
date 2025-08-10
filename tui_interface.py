@@ -4,7 +4,6 @@ import time
 import sys
 import re
 from datetime import datetime
-from municipal_code_assistant import MunicipalCodeAssistant
 
 
 class Colors:
@@ -146,7 +145,7 @@ class TUIInterface:
         max_content_width = width - 4
         
         print(f"\n{Colors.BRIGHT_BLUE}╔{'═' * (width-2)}╗{Colors.END}")
-        print(f"{Colors.BRIGHT_BLUE}║{Colors.YELLOW} 🤖 AI ASSISTANT RESPONSE{' ' * (width - 27)}║{Colors.END}")
+        print(f"{Colors.BRIGHT_BLUE}║{Colors.YELLOW} ✨ AI ASSISTANT RESPONSE{' ' * (width - 27)}║{Colors.END}")
         print(f"{Colors.BRIGHT_BLUE}╠{'═' * (width-2)}╣{Colors.END}")
         
         highlighted_response = self.highlight_sections_in_text(response)
@@ -254,13 +253,18 @@ class TUIInterface:
                 self.print_status_bar("Searching municipal code database...", "LOADING")
                 self.print_loading_animation("Analyzing your question")
                 
-                # Ask the assistant
+                # Ask the assistant (with iterative search)
                 result = self.assistant.ask_question(question)
                 
                 if not result['success']:
                     self.print_status_bar(result['error'], "WARNING")
                     print(f"\n{Colors.YELLOW}💡 Try rephrasing your question or being more specific.{Colors.END}")
                     continue
+                
+                # Show iterations if more than 1
+                iterations = result.get('iterations', 1)
+                if iterations > 1:
+                    self.print_status_bar(f"Completed {iterations} search iterations for comprehensive answer", "INFO")
                 
                 self.print_status_bar(f"Found {len(result['documents'])} relevant sections", "SUCCESS")
                 
@@ -273,9 +277,19 @@ class TUIInterface:
                 
                 # Display AI response
                 if result['answer']:
-                    self.print_status_bar("Generating AI analysis...", "LOADING")
-                    self.print_loading_animation("Processing legal text")
+                    if iterations > 1:
+                        self.print_status_bar(f"Generating comprehensive analysis from {iterations} search rounds...", "LOADING")
+                        self.print_loading_animation("Synthesizing complete answer")
+                    else:
+                        self.print_status_bar("Generating AI analysis...", "LOADING")
+                        self.print_loading_animation("Processing legal text")
+                    
                     self.print_ai_response_box(result['answer'])
+                    
+                    # Show note if there's one (partial answer, etc.)
+                    if result.get('note'):
+                        self.print_status_bar(f"Note: {result['note']}", "INFO")
+                        
                 elif result['error']:
                     self.print_status_bar(result['error'], "ERROR")
                     print(f"\n{Colors.RED}Please refer to the code sections above for guidance.{Colors.END}")
