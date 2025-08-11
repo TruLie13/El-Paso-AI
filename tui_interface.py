@@ -52,8 +52,8 @@ class TUIInterface:
 ║  ███████╗███████╗    ██║     ██║  ██║███████║╚██████╔╝    ██║  ██║██║        ║
 ║  ╚══════╝╚══════╝    ╚═╝     ╚═╝  ╚═╝╚══════╝ ╚═════╝     ╚═╝  ╚═╝╚═╝        ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
-║                      {Colors.YELLOW}Municipal Code Assistant{Colors.BRIGHT_BLUE}                           ║
-║                    {Colors.DIM}Ask questions about city regulations{Colors.BRIGHT_BLUE}                  ║
+║                      {Colors.YELLOW}Municipal Code Assistant{Colors.BRIGHT_BLUE}                          
+║              {Colors.DIM}{Colors.YELLOW}  Ask questions about city regulations{Colors.BRIGHT_BLUE}               
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 {Colors.END}"""
         
@@ -65,7 +65,6 @@ class TUIInterface:
         print(f"{color}{char * width}{Colors.END}")
     
     def print_status_bar(self, message, status="INFO"):
-        """Print a status bar with message"""
         width = self.get_terminal_width()
         status_colors = {
             "INFO": Colors.BLUE,
