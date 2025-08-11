@@ -10,6 +10,17 @@ venv/
 # Environment variables
 .env
 
+# Large data files and folders
+data/
+*.pdf
+*.txt
+
 # IDE / Editor specific
 .vscode/
 .idea/
+
+# Database files
+chroma_db/
+chroma_db_final_structured/
+*.sqlite3
+
