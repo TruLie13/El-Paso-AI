@@ -237,7 +237,6 @@ def main():
     elapsed = time.time() - start_time
     print(f"\n🎉 COMPLETE! Total time: {elapsed:.1f} seconds")
     print(f"📍 Database ready at: {DB_PATH}")
-    print(f"🚀 Your ask.py should now work perfectly!")
 
 if __name__ == "__main__":
     main()
