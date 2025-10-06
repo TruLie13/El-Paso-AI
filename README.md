@@ -31,10 +31,10 @@ The system is built on a sophisticated RAG pipeline that uses both pre-defined s
 
 1. **Ingestion:** A large PDF of the municipal code is processed in parallel using Python's multiprocessing. The raw text is extracted using OCR, cleaned, and cached to a text file for efficiency.
 
-2. **Indexing:** The cleaned text is parsed using Regex to identify parent sections. A ParentDocumentRetriever then splits these sections into smaller child chunks for embedding, storing the parents in an in-memory docstore and the child embeddings in a persistent ChromaDB vector store.
+2. **Indexing:** The cleaned text is parsed using Regex to identify parent sections. A `ParentDocumentRetriever` then splits these sections into smaller child chunks for embedding, storing the parents in an in-memory docstore and the child embeddings in a persistent ChromaDB vector store.
 
 3. **Querying:** A user question initiates a multi-step process orchestrated by the MunicipalCodeAssistant class:
-   - **Smart Search:** A custom smart_search_code function generates multiple query variations and retrieves an initial set of documents. It then applies a custom scoring algorithm based on word matches, section numbers, and legal keywords to re-rank the results for relevance.
+   - **Smart Search:** A custom `smart_search_code` function generates multiple query variations and retrieves an initial set of documents. It then applies a custom scoring algorithm based on word matches, section numbers, and legal keywords to re-rank the results for relevance.
    - **Self-Query Fallback:** If the initial search yields few results, a SelfQueryRetriever is used as a fallback to translate the question into a structured query with metadata filters.
    - **Initial Generation:** The top-ranked documents are passed to a Google Gemini LLM to generate an initial answer.
    - **Self-Correction Loop:** The assistant analyzes its own answer. If it determines more information is needed, it extracts new search terms and performs a second, targeted retrieval to augment the context.
@@ -43,9 +43,9 @@ The system is built on a sophisticated RAG pipeline that uses both pre-defined s
 ## Implementation
 - **Parallel Ingestion:** Utilized Python's multiprocessing to dramatically speed up the initial, time-consuming OCR and text extraction from the source PDF.
 
-- **Advanced Retrieval:** Implemented a ParentDocumentRetriever to combine the precision of small chunk search with the context of full document retrieval.
+- **Advanced Retrieval:** Implemented a `ParentDocumentRetriever` to combine the precision of small chunk search with the context of full document retrieval.
 
-- **Custom Relevance Scoring:** Developed a smart_search_code function that goes beyond basic vector similarity. It generates multiple queries and re-ranks results using a custom algorithm that boosts scores based on keyword matches and the relevance of specific municipal code titles.
+- **Custom Relevance Scoring:** Developed a `smart_search_code` function that goes beyond basic vector similarity. It generates multiple queries and re-ranks results using a custom algorithm that boosts scores based on keyword matches and the relevance of specific municipal code titles.
 
 ```python
 def relevance_score(doc):
@@ -55,7 +55,7 @@ def relevance_score(doc):
 all_docs.sort(key=relevance_score, reverse=True)
 ```
 
-- **Agentic Search Loop:** The main ask_question method functions as a simple agent. It performs a search, generates an answer, checks its own answer for completeness, and can trigger a secondary, targeted search to refine the result.
+- **Agentic Search Loop:** The main `ask_question` method functions as a simple agent. It performs a search, generates an answer, checks its own answer for completeness, and can trigger a secondary, targeted search to refine the result.
 
 ```python
 # Simplified logic of the agentic loop
@@ -78,7 +78,7 @@ The primary success metric is the qualitative improvement in answer quality over
 - **This Project's Result:** The multi-query search and relevance scoring successfully locate the specific section defining fire lane obstructions. The final answer is direct, cites the code, and provides the specific distance (e.g., "No, you cannot park within 15 feet of a fire hydrant as per section X.Y.Z, which defines this area as a fire lane.").
 
 ## Cost & Scaling
-**Cost:** The application primarily uses a local vector database (ChromaDB) and local processing. The only external cost is API calls to the Google Generative AI (Gemini) model for the generation steps. Caching and efficient, targeted retrieval minimize the number and size of these calls.
+**Cost:** The application primarily uses a local vector database (`ChromaDB`) and local processing. The only external cost is API calls to the Google Generative AI (Gemini) model for the generation steps. Caching and efficient, targeted retrieval minimize the number and size of these calls.
 
 **Scaling:** The most computationally expensive step, the initial PDF ingestion, is scaled across multiple CPU cores using multiprocessing. The retrieval logic is optimized for performance on a single machine.
 
