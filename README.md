@@ -1,6 +1,8 @@
 # El Paso Municipal Code AI Assistant 
 A multi-step, agentic RAG pipeline with a custom scoring retriever for accurately answering complex questions about the El Paso, TX municipal code.
 
+*** A simplified version of this project, adapted for a bootcamp curriculum with a more streamlined architecture and using Ollama for local inference, is also available here: https://github.com/TruLie13/municipal-ai ***
+
 ## Table of Contents
 - [Project Overview](#project-overview)
 - [Problem Statement](#problem-statement)
