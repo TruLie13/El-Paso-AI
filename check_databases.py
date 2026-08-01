@@ -10,7 +10,7 @@ def check_database(db_path):
         if not os.path.exists(db_path):
             return f"{db_path}: Directory does not exist"
         
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
         vectorstore = Chroma(persist_directory=db_path, embedding_function=embeddings)
         
         collection = vectorstore._collection

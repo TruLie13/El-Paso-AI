@@ -19,7 +19,7 @@ def main():
 
     print("Loading FINAL knowledge base... Please wait.")
 
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma(persist_directory=DB_PATH,
                          embedding_function=embeddings)
     llm = ChatGoogleGenerativeAI(

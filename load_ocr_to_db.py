@@ -175,7 +175,7 @@ def main():
         import shutil
         shutil.rmtree(DB_PATH)
     
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma(
         persist_directory=DB_PATH,
         embedding_function=embeddings

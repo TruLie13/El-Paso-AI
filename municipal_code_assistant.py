@@ -4,11 +4,12 @@ from dotenv import load_dotenv
 from datetime import datetime
 from functools import lru_cache
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain.chains.query_constructor.base import AttributeInfo
 from langchain.prompts import PromptTemplate
+from local_embeddings import LocalEmbeddings
 
 
 class MunicipalCodeAssistant:
@@ -30,7 +31,8 @@ class MunicipalCodeAssistant:
         if not os.getenv("GOOGLE_API_KEY"):
             raise ValueError("GOOGLE_API_KEY not found in environment variables")
         
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        # Must match ingest.py embeddings so query vectors align with the DB
+        self.embeddings = LocalEmbeddings()
         self.vectorstore = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
         self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
         

@@ -1,16 +1,14 @@
 import os
 import re
+import shutil
 import time
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 import fitz  # PyMuPDF
 from langchain_core.documents import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.storage import InMemoryStore
-from langchain.retrievers import ParentDocumentRetriever
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from local_embeddings import LocalEmbeddings
 
 # --- CONFIGURATION ---
 PDF_PATH = "data/EP_Ordinances.pdf"
@@ -83,9 +81,6 @@ def process_page_chunk(page_chunk):
 
 def main():
     load_dotenv()
-    if not os.getenv("GOOGLE_API_KEY"):
-        print("Error: GOOGLE_API_KEY not found.")
-        return
 
     # Step 1: Get the full text, either from cache or by running OCR
     full_text = get_ocr_text()
@@ -113,18 +108,15 @@ def main():
         doc.page_content) > min_length]
     print(f"Kept {len(filtered_documents)} valid sections after filtering.")
 
-    # Step 4: Set up the retriever
-    print("\nStep 4: Setting up the Parent Document Retriever...")
-    docstore = InMemoryStore()
+    # Step 4: Build ChromaDB with local embeddings (no Google API needed)
+    print("\nStep 4: Setting up ChromaDB with local embeddings...")
+    if os.path.exists(DB_PATH):
+        shutil.rmtree(DB_PATH)
+    embeddings = LocalEmbeddings()
     vectorstore = Chroma(
         collection_name="full_sections_final",
-        embedding_function=GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001"),
+        embedding_function=embeddings,
         persist_directory=DB_PATH,
-    )
-    child_splitter = RecursiveCharacterTextSplitter(chunk_size=500)
-    retriever = ParentDocumentRetriever(
-        vectorstore=vectorstore, docstore=docstore, child_splitter=child_splitter
     )
 
     # Step 5: Add documents in batches
@@ -132,10 +124,16 @@ def main():
     batch_size = 50
     for i in tqdm(range(0, len(filtered_documents), batch_size), desc="Adding Batches"):
         batch = filtered_documents[i:i + batch_size]
-        retriever.add_documents(batch, ids=None)
+        vectorstore.add_documents(batch)
 
-    vectorstore.persist()
-    print("\n--- FINAL INGESTION COMPLETE ---")
+    print(f"\n--- FINAL INGESTION COMPLETE ---")
+    print(f"Database ready at: {DB_PATH}")
+    print(f"Collection count: {vectorstore._collection.count()}")
+
+    # Quick retrieval sanity check
+    hits = vectorstore.similarity_search("fence height", k=2)
+    if hits:
+        print(f"Test search OK — top hit section: {hits[0].metadata.get('section')}")
 
 
 if __name__ == "__main__":
