@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
-from langchain.retrievers.self_query.base import SelfQueryRetriever
-from langchain.chains.query_constructor.base import AttributeInfo
+from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
+from langchain_classic.chains.query_constructor.base import AttributeInfo
 
 # --- CONFIGURATION ---
 # Point to our final, structured database

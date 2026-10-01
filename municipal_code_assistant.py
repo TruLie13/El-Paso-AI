@@ -6,9 +6,9 @@ from functools import lru_cache
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
-from langchain.retrievers.self_query.base import SelfQueryRetriever
-from langchain.chains.query_constructor.base import AttributeInfo
-from langchain.prompts import PromptTemplate
+from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
+from langchain_classic.chains.query_constructor.base import AttributeInfo
+from langchain_core.prompts import PromptTemplate
 from local_embeddings import LocalEmbeddings
 
 
