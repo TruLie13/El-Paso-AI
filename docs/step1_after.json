@@ -1,0 +1,109 @@
+{
+  "legacy": {
+    "split_points": 16350,
+    "unique_ids_in_stream": 4873,
+    "kept_after_min_length": 8641,
+    "unique_kept_if_deduped": 3953,
+    "kept_with_early_chrome": 2075
+  },
+  "new": {
+    "header_matches": 5248,
+    "unique_header_ids": 3844,
+    "indexed_units": 3580,
+    "units_with_chrome": 3,
+    "table_units": 7,
+    "prose_units": 3573,
+    "dialects": {
+      "municipal_decimal": 3299,
+      "article": 12,
+      "section_word": 261,
+      "section_symbol": 8
+    },
+    "avg_body_chars": 2429
+  },
+  "retrieval": {
+    "summary": {
+      "n": 5,
+      "hit_at_1": 0.0,
+      "hit_at_3": 0.4,
+      "hit_at_8": 0.4
+    },
+    "details": [
+      {
+        "question": "How tall can a residential fence be?",
+        "want": "20.16.030",
+        "rank": 3,
+        "top": [
+          "20.02.852",
+          "20.02.370",
+          "20.16.030",
+          "20.16.010",
+          "18.10.040",
+          "21.80.110",
+          "12.68.020",
+          "18.08.030"
+        ]
+      },
+      {
+        "question": "parking near a fire hydrant distance",
+        "want": "12.20.120",
+        "rank": null,
+        "top": [
+          "9.52.170",
+          "14.20.140",
+          "14.24.080",
+          "12.80.050",
+          "12.44.020",
+          "12.44.130",
+          "12.08.220",
+          "12.44.010"
+        ]
+      },
+      {
+        "question": "public urination prohibited",
+        "want": "10.12.010",
+        "rank": null,
+        "top": [
+          "10.16.110",
+          "5.19.020",
+          "5.09.170",
+          "14.16.070",
+          "9.48.160",
+          "18.21.340",
+          "10.16.090",
+          "5.09.130"
+        ]
+      },
+      {
+        "question": "dangerous exotic animals tiger",
+        "want": "7.24.020",
+        "rank": null,
+        "top": [
+          "7.08.090",
+          "7.08.040",
+          "7.04.030",
+          "5.16.090",
+          "7.08.030",
+          "20.10.290",
+          "7.04.060",
+          "7.08.050"
+        ]
+      },
+      {
+        "question": "section 12.12.010 authorized emergency vehicles",
+        "want": "12.12.010",
+        "rank": 2,
+        "top": [
+          "12.21.050",
+          "12.12.010",
+          "12.04.210",
+          "9.85.090",
+          "12.80.040",
+          "2.48.030",
+          "9.52.120",
+          "9.85.010"
+        ]
+      }
+    ]
+  }
+}

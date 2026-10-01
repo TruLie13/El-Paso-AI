@@ -25,6 +25,8 @@ This project is an advanced Question-Answering system designed to navigate the d
 Municipal codes are often hundreds of pages long, written in dense legalese, and poorly indexed for public use. This makes it incredibly difficult for citizens and business owners to find definitive answers to simple questions (e.g., "How tall can my fence be?" or "What are the rules for street parking?"), leading to frustration, non-compliance, and an increased burden on city officials.
 
 ## Architecture
+For a current high-level map of how the system is wired (ingest, retrieval, generation), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Planned enhancements: [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md).
+
 The system is built on a sophisticated RAG pipeline that uses both pre-defined search strategies and agentic reasoning to find the best possible answer.
 
 **Data Flow:**
