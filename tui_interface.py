@@ -236,7 +236,11 @@ class TUIInterface:
             self.print_status_bar("Loading El Paso Municipal Code knowledge base...", "LOADING")
             self.print_loading_animation("Initializing AI components")
             self.assistant.initialize()
-            self.print_status_bar("Knowledge base loaded successfully!", "SUCCESS")
+            provider = getattr(self.assistant, "llm_provider", "unknown")
+            self.print_status_bar(
+                f"Knowledge base loaded successfully! (LLM: {provider})",
+                "SUCCESS",
+            )
         except Exception as e:
             self.print_status_bar(f"Failed to initialize system: {e}", "ERROR")
             return

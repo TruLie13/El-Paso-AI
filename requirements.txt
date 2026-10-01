@@ -3,6 +3,7 @@ langchain-core
 langchain-community
 langchain-experimental
 langchain-google-genai
+langchain-ollama
 langchain-chroma
 google-generativeai
 python-dotenv

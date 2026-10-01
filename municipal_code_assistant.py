@@ -4,12 +4,14 @@ from dotenv import load_dotenv
 from datetime import datetime
 from functools import lru_cache
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
 from langchain_classic.chains.query_constructor.base import AttributeInfo
 from langchain_core.prompts import PromptTemplate
 from local_embeddings import LocalEmbeddings
+
+# Collection name must match ingest.py
+CODE_COLLECTION = "full_sections_final"
 
 
 class MunicipalCodeAssistant:
@@ -20,21 +22,45 @@ class MunicipalCodeAssistant:
         self.embeddings = None
         self.vectorstore = None
         self.llm = None
+        self.llm_provider = None
         self.retriever = None
         self.summary_chain = None
         self.use_self_query = False
+
+    def _create_llm(self):
+        """Default to local Ollama; set LLM_PROVIDER=google to use Gemini instead."""
+        provider = (os.getenv("LLM_PROVIDER") or "ollama").strip().lower()
+
+        if provider in ("google", "gemini"):
+            if not os.getenv("GOOGLE_API_KEY"):
+                raise ValueError(
+                    "LLM_PROVIDER=google but GOOGLE_API_KEY is not set"
+                )
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            model = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
+            self.llm_provider = f"google:{model}"
+            return ChatGoogleGenerativeAI(model=model, temperature=0.1)
+
+        from langchain_ollama import ChatOllama
+
+        model = os.getenv("OLLAMA_MODEL", "llama3")
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        self.llm_provider = f"ollama:{model}"
+        return ChatOllama(model=model, base_url=base_url, temperature=0.1)
         
     def initialize(self):
         """Initialize all AI components"""
         load_dotenv()
-        
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
-        
+
         # Must match ingest.py embeddings so query vectors align with the DB
         self.embeddings = LocalEmbeddings()
-        self.vectorstore = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
-        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+        self.vectorstore = Chroma(
+            persist_directory=self.db_path,
+            collection_name=CODE_COLLECTION,
+            embedding_function=self.embeddings,
+        )
+        self.llm = self._create_llm()
         
         # Setup self-query retriever
         metadata_field_info = [
