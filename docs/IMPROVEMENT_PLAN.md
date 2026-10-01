@@ -101,10 +101,10 @@ Measure **before** wipe (old splitter / old DB) and **after** reingest. Gains mu
 
 | | |
 | --- | --- |
-| **Status** | `proposed` |
+| **Status** | `done` |
 | **Pipeline** | C |
-| **Where** | `batch_search` / `smart_search_code` / `relevance_score` |
-| **Depends on** | Step 1 recommended (required for trusted baseline) |
+| **Where** | `batch_search` / `smart_search_code` / `get_docs_by_section` |
+| **Depends on** | Step 1 |
 
 **Work**
 
@@ -277,6 +277,24 @@ Neither reliably means “missing answer,” and stacking both would double-spen
 
 Structure win is clear; retrieval lift is real but golden IDs/set should be expanded before over-claiming. Ready for step 2 (P0).
 
+### Step 2 — Retrieval P0 (2026-10-01)
+
+**What changed**
+
+- `similarity_search_with_score` + keep `metadata.distance`; rank by ascending distance
+- Exact `get_docs_by_section` pin when question contains a section id
+- Removed city/chapter-prefix + phrase heuristic `relevance_score`
+- Expanded golden set (`golden_questions.py`); `verify_step2.py`
+- Cross-encoder deferred — distance + id pin enough for P0 acceptance vs old heuristic/plain dense
+
+**Verification** (`docs/step2_after.json`, n=10)
+
+| Mode | hit@1 | hit@3 | hit@8 |
+| --- | --- | --- | --- |
+| Plain `similarity_search` | 30% | 50% | 70% |
+| **smart_search (P0)** | **50%** | **80%** | **100%** |
+
+Section-id questions rank #1 via metadata fetch. Ready for step 3 (hybrid) when we want lexical lift on hydrant-style wording.
 ---
 
 ## How we use this doc

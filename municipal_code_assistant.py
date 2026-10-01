@@ -7,11 +7,20 @@ from functools import lru_cache
 from langchain_chroma import Chroma
 from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
 from langchain_classic.chains.query_constructor.base import AttributeInfo
+from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from local_embeddings import LocalEmbeddings
 
 # Collection name must match ingest.py
 CODE_COLLECTION = "full_sections_final"
+
+# Municipal + common gov heading ids appearing in user questions
+_SECTION_ID_RE = re.compile(
+    r"\b(\d{1,2}\.\d{1,2}\.\d{1,3})\b"
+    r"|(?:Section\s+(\d+(?:\.\d+){0,4}))"
+    r"|(?:§\s*(\d+(?:\.\d+){0,4}))",
+    re.I,
+)
 
 
 class MunicipalCodeAssistant:
@@ -109,6 +118,42 @@ INSTRUCTIONS:
 ANSWER:"""
         )
         return summary_prompt | self.llm
+
+    @staticmethod
+    def extract_section_ids(question: str) -> list[str]:
+        """Pull municipal / Section / § ids from a user question."""
+        found: list[str] = []
+        seen: set[str] = set()
+        for m in _SECTION_ID_RE.finditer(question):
+            sid = next(g for g in m.groups() if g)
+            if sid not in seen:
+                seen.add(sid)
+                found.append(sid)
+        return found
+
+    def get_docs_by_section(self, section_id: str) -> list[Document]:
+        """Exact metadata lookup (no embedding)."""
+        if not self.vectorstore:
+            return []
+        try:
+            raw = self.vectorstore.get(
+                where={"section": section_id},
+                include=["documents", "metadatas"],
+            )
+        except Exception:
+            return []
+        docs: list[Document] = []
+        documents = raw.get("documents") or []
+        metadatas = raw.get("metadatas") or []
+        for content, meta in zip(documents, metadatas):
+            if content is None:
+                continue
+            metadata = dict(meta or {})
+            metadata.setdefault("section", section_id)
+            metadata["distance"] = 0.0
+            metadata["match_type"] = "section_id"
+            docs.append(Document(page_content=content, metadata=metadata))
+        return docs
     
     @lru_cache(maxsize=100)
     def _get_cached_search_variations(self, question_lower_hash):
@@ -131,116 +176,138 @@ ANSWER:"""
         return variations
     
     def batch_search(self, queries, k_per_query=2):
-        """Perform multiple searches efficiently without threading"""
-        all_docs = []
-        seen_content = set()
-        
+        """
+        Dense search keeping Chroma distances.
+
+        Dedupes by section id, keeping the best (lowest) distance per section.
+        Attaches metadata['distance'] for ranking.
+        """
+        best: dict[str, tuple[Document, float]] = {}
+
         for query in queries:
             try:
-                docs = self.vectorstore.similarity_search(query, k=k_per_query)
-                for doc in docs:
-                    content_hash = hash(doc.page_content[:100])
-                    if content_hash not in seen_content:
-                        all_docs.append(doc)
-                        seen_content.add(content_hash)
+                pairs = self.vectorstore.similarity_search_with_score(
+                    query, k=k_per_query
+                )
             except Exception:
                 continue
-        
-        return all_docs
+            for doc, distance in pairs:
+                section = doc.metadata.get("section") or str(
+                    hash(doc.page_content[:100])
+                )
+                dist = float(distance)
+                prev = best.get(section)
+                if prev is None or dist < prev[1]:
+                    meta = dict(doc.metadata)
+                    meta["distance"] = dist
+                    meta.setdefault("match_type", "dense")
+                    best[section] = (
+                        Document(page_content=doc.page_content, metadata=meta),
+                        dist,
+                    )
+
+        # Sort by ascending distance (Chroma: lower = closer)
+        ordered = sorted(best.values(), key=lambda t: t[1])
+        return [doc for doc, _ in ordered]
     
     def smart_search_code(self, question, k=10):
-        """Optimized search with parallel processing and smarter query selection"""
-        # Start with the original question
+        """
+        P0 retrieval: section-id pin + multi-query dense search, ranked by distance.
+
+        Replaces city/chapter-prefix heuristic bonuses. Existing topic query
+        expansions are kept lightly (not grown) until hybrid (step 3).
+        """
+        pinned: list[Document] = []
+        seen: set[str] = set()
+        for sid in self.extract_section_ids(question):
+            for doc in self.get_docs_by_section(sid):
+                section = doc.metadata.get("section")
+                if section and section not in seen:
+                    seen.add(section)
+                    pinned.append(doc)
+                # Also try bare decimal if "Section 12.12.010" style stored as decimal
+                if re.match(r"^\d", sid):
+                    continue
+                # no-op; municipal store uses decimal ids
+
         search_queries = [question]
-        
-        # Add strategic variations based on content
         question_lower = question.lower()
-        
-        # Pre-defined high-value search patterns with more comprehensive coverage
-        if any(word in question_lower for word in ['shit', 'defecate', 'urinate', 'pee', 'bathroom', 'toilet', 'public restroom']):
-            search_queries.extend([
-                "public urination defecation prohibited",
-                "indecent conduct public decency",
-                "disorderly conduct public behavior",
-                "public health sanitation violations",
-                "nuisance public place bathroom"
-            ])
-        
-        if any(word in question_lower for word in ['fence', 'wall', 'height']):
-            search_queries.extend([
-                "residential fence height 20.16.030",
-                "fence screening wall residential"
-            ])
-        
-        if any(word in question_lower for word in ['animal', 'tiger', 'pet', 'dog']):
-            search_queries.extend([
-                "animal control dangerous animals",
-                "exotic animal prohibition"
-            ])
-        
-        if any(word in question_lower for word in ['business', 'commercial', 'store']):
-            search_queries.extend([
-                "business license commercial",
-                "zoning commercial activity"
-            ])
-        
-        # Limit total queries to prevent excessive searching
-        search_queries = search_queries[:6]  # Increased from 5 to 6 for better coverage
-        
-        # Perform batch searches
-        all_docs = self.batch_search(search_queries, k_per_query=max(2, k//len(search_queries)))
-        
-        # Enhanced scoring for relevance
-        question_words = set(question.lower().split())
-        
-        def relevance_score(doc):
-            content_words = set(doc.page_content.lower().split())
-            section = doc.metadata.get('section', '')
-            content_lower = doc.page_content.lower()
-            
-            # Word matching score
-            word_match_score = len(question_words.intersection(content_words))
-            
-            # Section priority scoring - updated for public behavior topics
-            section_bonus = 0
-            if section.startswith('20.16'):  # Zoning - often relevant
-                section_bonus = 15
-            elif section.startswith('18.'):   # General regulations
-                section_bonus = 10
-            elif section.startswith('7.'):    # Animals
-                section_bonus = 8
-            elif section.startswith('10.'):   # Public safety
-                section_bonus = 12
-            elif section.startswith('9.'):    # Health/sanitation
-                section_bonus = 14
-            elif section.startswith('8.'):    # Public conduct/peace
-                section_bonus = 16
-                
-            # Content quality indicators - enhanced for public behavior
-            quality_bonus = 0
-            if any(word in content_lower for word in ['prohibited', 'unlawful', 'shall not', 'violation']):
-                quality_bonus += 8
-            if any(word in content_lower for word in ['public place', 'indecent', 'disorderly']):
-                quality_bonus += 6
-            if any(word in content_lower for word in ['urinate', 'defecate', 'excrete']):
-                quality_bonus += 10
-            if any(word in content_lower for word in ['permitted', 'allowed', 'shall', 'required']):
-                quality_bonus += 3
-                
-            return word_match_score + section_bonus + quality_bonus
-        
-        # Sort and return top results
-        all_docs.sort(key=relevance_score, reverse=True)
-        return all_docs[:k]
-    
+
+        # Pre-defined high-value search patterns (unchanged set; do not grow)
+        if any(
+            word in question_lower
+            for word in [
+                "shit",
+                "defecate",
+                "defecation",
+                "urinate",
+                "urination",
+                "pee",
+                "bathroom",
+                "toilet",
+                "public restroom",
+                "calls of nature",
+            ]
+        ):
+            search_queries.extend(
+                [
+                    "public urination defecation prohibited",
+                    "indecent conduct public decency",
+                    "disorderly conduct public behavior",
+                    "public health sanitation violations",
+                    "nuisance public place bathroom",
+                ]
+            )
+
+        if any(word in question_lower for word in ["fence", "wall", "height"]):
+            search_queries.extend(
+                [
+                    "residential fence height 20.16.030",
+                    "fence screening wall residential",
+                ]
+            )
+
+        if any(word in question_lower for word in ["animal", "tiger", "pet", "dog"]):
+            search_queries.extend(
+                [
+                    "animal control dangerous animals",
+                    "exotic animal prohibition",
+                ]
+            )
+
+        if any(
+            word in question_lower for word in ["business", "commercial", "store"]
+        ):
+            search_queries.extend(
+                [
+                    "business license commercial",
+                    "zoning commercial activity",
+                ]
+            )
+
+        search_queries = search_queries[:6]
+        k_per = max(3, (k * 2) // max(1, len(search_queries)))
+        dense_docs = self.batch_search(search_queries, k_per_query=k_per)
+
+        merged = list(pinned)
+        for doc in dense_docs:
+            section = doc.metadata.get("section")
+            if section in seen:
+                continue
+            seen.add(section)
+            merged.append(doc)
+
+        # Pinned (exact id) stay first; remaining already distance-sorted from batch_search
+        return merged[:k]
+
     def ask_question(self, question):
         """Optimized main method with faster iteration logic"""
         if not self.vectorstore:
             raise RuntimeError("Assistant not initialized. Call initialize() first.")
-        
+
         # Step 1: Comprehensive initial search (more docs upfront)
         retrieved_docs = self.smart_search_code(question, k=12)
-        
+
         # Step 2: Fallback with self-query if available
         if len(retrieved_docs) < 5 and self.use_self_query:
             try:
@@ -253,7 +320,7 @@ ANSWER:"""
                             break
             except Exception:
                 pass
-        
+
         if not retrieved_docs:
             return {
                 'success': False,
@@ -262,7 +329,7 @@ ANSWER:"""
                 'answer': None,
                 'iterations': 0
             }
-        
+
         # Step 3: Generate initial response
         try:
             context = self._format_retrieved_docs(retrieved_docs)
@@ -270,12 +337,12 @@ ANSWER:"""
                 "question": question,
                 "context": context
             })
-            
+
             answer = response.content if hasattr(response, 'content') else str(response)
-            
+
             # Step 4: Quick check if we need more info (simplified logic)
             needs_more_info = self._quick_needs_check(answer)
-            
+
             if not needs_more_info:
                 return {
                     'success': True,
@@ -284,12 +351,12 @@ ANSWER:"""
                     'error': None,
                     'iterations': 1
                 }
-            
+
             # Step 5: One additional targeted search if needed
             additional_terms = self._extract_quick_search_terms(answer, question)
             if additional_terms:
                 extra_docs = self.batch_search(additional_terms[:3], k_per_query=2)
-                
+
                 # Add unique documents
                 seen_sections = {doc.metadata.get('section') for doc in retrieved_docs}
                 new_docs = []
@@ -297,19 +364,19 @@ ANSWER:"""
                     if doc.metadata.get('section') not in seen_sections:
                         new_docs.append(doc)
                         seen_sections.add(doc.metadata.get('section'))
-                
+
                 if new_docs:
                     all_docs = retrieved_docs + new_docs
                     context = self._format_retrieved_docs(all_docs)
-                    
+
                     # Generate final answer
                     final_response = self.summary_chain.invoke({
                         "question": question,
                         "context": context
                     })
-                    
+
                     final_answer = final_response.content if hasattr(final_response, 'content') else str(final_response)
-                    
+
                     return {
                         'success': True,
                         'documents': all_docs,
@@ -317,7 +384,7 @@ ANSWER:"""
                         'error': None,
                         'iterations': 2
                     }
-            
+
             # Return original answer if no improvement found
             return {
                 'success': True,
@@ -327,7 +394,7 @@ ANSWER:"""
                 'iterations': 1,
                 'note': 'Comprehensive search completed'
             }
-            
+
         except Exception as e:
             return {
                 'success': False,
@@ -336,12 +403,12 @@ ANSWER:"""
                 'error': f'Error generating response: {e}',
                 'iterations': 1
             }
-    
+
     def _format_retrieved_docs(self, docs):
         """Optimized document formatting"""
         context_parts = []
         seen_sections = set()
-        
+
         # Limit to top 8 most relevant documents to keep context manageable
         for doc in docs[:8]:
             section = doc.metadata.get('section', 'Unknown')
@@ -352,9 +419,9 @@ ANSWER:"""
                     content = content[:1000] + "..."
                 context_parts.append(f"Section {section}:\n{content}")
                 seen_sections.add(section)
-        
+
         return "\n\n".join(context_parts)
-    
+
     def _quick_needs_check(self, answer):
         """Simplified check for whether more information is needed"""
         # Reduced set of indicators for faster processing
@@ -364,7 +431,7 @@ ANSWER:"""
             "not provided in these sections",
             "additional information"
         ]
-        
+
         answer_lower = answer.lower()
         return any(indicator in answer_lower for indicator in needs_more_indicators)
     

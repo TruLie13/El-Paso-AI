@@ -80,10 +80,12 @@ Primary path: `MunicipalCodeAssistant.ask_question`.
 ```mermaid
 flowchart TD
   Q["User question"] --> S["smart_search_code"]
-  S --> V["Expand to topic-specific query variants\n(hard-coded keyword rules)"]
-  V --> B["batch_search: Chroma similarity_search\nper query (dense / vector only)"]
-  B --> R["Heuristic re-rank\nword overlap + section bonuses + phrase bonuses"]
-  R --> F{"Fewer than 5 docs and\nSelfQuery enabled?"}
+  S --> ID["Exact metadata fetch\nif section id in question"]
+  S --> V["Optional topic query variants\n(hard-coded; not grown)"]
+  V --> B["batch_search: similarity_search_with_score\n(dense; keep distances)"]
+  ID --> M["Merge: pinned ids first,\nthen distance-sorted dense hits"]
+  B --> M
+  M --> F{"Fewer than 5 docs and\nSelfQuery enabled?"}
   F -->|yes| SQ["SelfQueryRetriever fallback\n(LLM builds metadata filters)"]
   F -->|no| G["Format top docs as context\n(max 8 sections, truncated)"]
   SQ --> G
@@ -98,17 +100,15 @@ flowchart TD
 
 ### Retrieval details (important)
 
-Search is **not** hybrid BM25 + vector.
+Search is **not** hybrid BM25 + vector yet (plan step 3).
 
-1. **Candidate generation:** Chroma `similarity_search` only (dense embeddings).
-2. **Re-ranking:** Custom `relevance_score` on those candidates:
-   - token overlap between question and chunk
-   - hard-coded bonuses by section prefix (`20.16`, `9.`, `8.`, etc.)
-   - hard-coded phrase bonuses (`prohibited`, `shall not`, etc.)
-3. **Query expansion:** Rule-based topic maps (fence, animals, public conduct, etc.), not an LLM rewrite on the first pass.
-4. **Self-query:** Optional second path if the first search returns few docs; translates the question into structured metadata filters over `section`.
+1. **Section-id pin:** if the question contains an id like `12.44.020`, fetch that unit by metadata first (`match_type=section_id`).
+2. **Candidate generation:** Chroma `similarity_search_with_score` (dense); distances kept and used for ranking (lower = closer).
+3. **Ranking:** distance order after id pins — **no** city/chapter-prefix heuristic bonuses.
+4. **Query expansion:** existing hard-coded topic maps kept lightly (not grown); hybrid sparse search is meant to replace much of this later.
+5. **Self-query:** optional fallback if first search returns few docs (policy change planned in step 5).
 
-There is no sparse index, no BM25, and no fusion of independent keyword + vector result sets.
+There is no BM25/sparse index yet. Cross-encoder re-rank was deferred; distance ranking + id pin beat the old heuristic on the golden set.
 
 ### Generation
 
