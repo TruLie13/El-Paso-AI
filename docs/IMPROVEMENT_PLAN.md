@@ -131,7 +131,7 @@ Measure **before** wipe (old splitter / old DB) and **after** reingest. Gains mu
 
 | | |
 | --- | --- |
-| **Status** | `proposed` |
+| **Status** | `done` |
 | **Pipeline** | C |
 | **Depends on** | Step 2 baseline |
 
@@ -295,7 +295,25 @@ Structure win is clear; retrieval lift is real but golden IDs/set should be expa
 | **smart_search (P0)** | **50%** | **80%** | **100%** |
 
 Section-id questions rank #1 via metadata fetch. Ready for step 3 (hybrid) when we want lexical lift on hydrant-style wording.
----
+
+### Step 3 — Hybrid BM25 + dense RRF (2026-10-01)
+
+**What changed**
+
+- `hybrid_retriever.py`: BM25Okapi over Chroma units + `rrf_fuse`
+- `MunicipalCodeAssistant` rebuilds BM25 on `initialize()`; default `HYBRID_SEARCH=1`
+- `smart_search_code` fuses dense + BM25 after section-id pins
+- `rank_bm25` added to `requirements.txt`; metrics in `docs/step3_after.json`
+
+**Verification** (n=10 golden)
+
+| Mode | hit@1 | hit@3 | hit@8 |
+| --- | --- | --- | --- |
+| Plain dense | 30% | 50% | 70% |
+| Smart dense-only (step 2) | 50% | 80% | 100% |
+| **Hybrid (step 3)** | **80%** | **100%** | **100%** |
+
+Notable: fence → #1; “shit outside” → #1; hydrant natural language → #2 (was #4/#7). Ready for step 4 if finer chunking is needed, or step 5 answer-loop work.---
 
 ## How we use this doc
 

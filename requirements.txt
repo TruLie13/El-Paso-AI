@@ -11,4 +11,4 @@ tqdm
 unstructured[pdf,ocr]
 pytesseract
 pymupdf
-chromadb
+rank_bm25

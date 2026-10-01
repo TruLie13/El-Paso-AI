@@ -81,13 +81,16 @@ Primary path: `MunicipalCodeAssistant.ask_question`.
 flowchart TD
   Q["User question"] --> S["smart_search_code"]
   S --> ID["Exact metadata fetch\nif section id in question"]
-  S --> V["Optional topic query variants\n(hard-coded; not grown)"]
-  V --> B["batch_search: similarity_search_with_score\n(dense; keep distances)"]
-  ID --> M["Merge: pinned ids first,\nthen distance-sorted dense hits"]
-  B --> M
+  S --> V["Optional topic query variants"]
+  V --> B["Dense: similarity_search_with_score"]
+  V --> BM["BM25 over same Chroma units"]
+  B --> RRF["RRF fuse dense + BM25"]
+  BM --> RRF
+  ID --> M["Pinned ids first, then fused ranking"]
+  RRF --> M
   M --> F{"Fewer than 5 docs and\nSelfQuery enabled?"}
-  F -->|yes| SQ["SelfQueryRetriever fallback\n(LLM builds metadata filters)"]
-  F -->|no| G["Format top docs as context\n(max 8 sections, truncated)"]
+  F -->|yes| SQ["SelfQueryRetriever fallback"]
+  F -->|no| G["Format top docs as context\n(max 8 sections)"]
   SQ --> G
   G --> L1["LLM: initial answer"]
   L1 --> C{"Answer contains\n'needs more info' phrases?"}
@@ -100,15 +103,16 @@ flowchart TD
 
 ### Retrieval details (important)
 
-Search is **not** hybrid BM25 + vector yet (plan step 3).
+**Hybrid is on by default** (step 3): dense Chroma + BM25 over the same units, fused with RRF. Set `HYBRID_SEARCH=0` for dense-only (step 2 path).
 
-1. **Section-id pin:** if the question contains an id like `12.44.020`, fetch that unit by metadata first (`match_type=section_id`).
-2. **Candidate generation:** Chroma `similarity_search_with_score` (dense); distances kept and used for ranking (lower = closer).
-3. **Ranking:** distance order after id pins — **no** city/chapter-prefix heuristic bonuses.
-4. **Query expansion:** existing hard-coded topic maps kept lightly (not grown); hybrid sparse search is meant to replace much of this later.
-5. **Self-query:** optional fallback if first search returns few docs (policy change planned in step 5).
+1. **Section-id pin:** question contains `12.44.020` → metadata fetch first (`match_type=section_id`).
+2. **Dense:** `similarity_search_with_score` (distances kept).
+3. **Sparse:** in-memory BM25 (`rank_bm25`) rebuilt from Chroma on `initialize()` — same units as embeddings.
+4. **Fusion:** Reciprocal Rank Fusion over dense + BM25 rankings (`hybrid_retriever.rrf_fuse`).
+5. **Topic expansions:** still present lightly; hybrid reduces reliance on them for exact phrasing.
+6. **Self-query:** optional few-result fallback (policy change still planned in step 5).
 
-There is no BM25/sparse index yet. Cross-encoder re-rank was deferred; distance ranking + id pin beat the old heuristic on the golden set.
+No cross-encoder yet. Child/parent chunking is still plan step 4.
 
 ### Generation
 
@@ -139,8 +143,8 @@ Embeddings for the primary DB do **not** require Google. The default LLM path is
 | Claim | Current code |
 | --- | --- |
 | ParentDocumentRetriever (child chunks → parent sections) | Not used yet (plan step 4); full header units are indexed |
-| Hybrid vector + keyword search | Dense retrieval + heuristic keyword-ish re-rank only (plan step 3) |
-| BM25 / sparse retrieval | Not present |
+| Hybrid vector + keyword search | **Yes (step 3):** Chroma dense + BM25, RRF fuse (`HYBRID_SEARCH=0` to disable) |
+| BM25 / sparse retrieval | **Yes** — in-memory BM25 rebuilt from Chroma on initialize |
 | Agentic multi-step search | Light loop: search → generate → phrase check → optional second search |
 | Split on every section-id mention | **Fixed (step 1):** header-based unitization via `document_units.py` |
 

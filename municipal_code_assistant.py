@@ -10,9 +10,17 @@ from langchain_classic.chains.query_constructor.base import AttributeInfo
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from local_embeddings import LocalEmbeddings
+from hybrid_retriever import BM25Index, rrf_fuse
 
 # Collection name must match ingest.py
 CODE_COLLECTION = "full_sections_final"
+
+# Hybrid (BM25 + dense RRF). Set HYBRID_SEARCH=0 to use dense-only P0 path.
+def _env_flag(name: str, default: bool = True) -> bool:
+    raw = (os.getenv(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
 
 # Municipal + common gov heading ids appearing in user questions
 _SECTION_ID_RE = re.compile(
@@ -35,6 +43,8 @@ class MunicipalCodeAssistant:
         self.retriever = None
         self.summary_chain = None
         self.use_self_query = False
+        self.bm25_index: BM25Index | None = None
+        self.use_hybrid = _env_flag("HYBRID_SEARCH", default=True)
 
     def _create_llm(self):
         """Default to local Ollama; set LLM_PROVIDER=google to use Gemini instead."""
@@ -94,6 +104,19 @@ class MunicipalCodeAssistant:
             self.use_self_query = False
         
         self.summary_chain = self._create_summary_chain()
+        self._rebuild_bm25_index()
+
+    def _rebuild_bm25_index(self) -> None:
+        """Rebuild sparse index from current Chroma units (same corpus as dense)."""
+        self.bm25_index = BM25Index()
+        if not self.vectorstore:
+            return
+        try:
+            n = self.bm25_index.build_from_vectorstore(self.vectorstore)
+            if n == 0:
+                self.bm25_index = None
+        except Exception:
+            self.bm25_index = None
     
     def _create_summary_chain(self):
         """Create a streamlined chain for summarizing search results"""
@@ -107,7 +130,7 @@ CODE SECTIONS:
 {context}
 
 INSTRUCTIONS:
-- Give a direct YES/NO answer first
+- Lead with a clear, direct answer in plain language (do not force a YES/NO opener)
 - Cite the specific section that applies
 - If you find a relevant section (like public indecency, disorderly conduct, etc.), apply it confidently
 - Include penalties/consequences if mentioned in the sections
@@ -212,10 +235,9 @@ ANSWER:"""
     
     def smart_search_code(self, question, k=10):
         """
-        P0 retrieval: section-id pin + multi-query dense search, ranked by distance.
+        Hybrid retrieval (step 3): section-id pin + dense + BM25 fused with RRF.
 
-        Replaces city/chapter-prefix heuristic bonuses. Existing topic query
-        expansions are kept lightly (not grown) until hybrid (step 3).
+        Set HYBRID_SEARCH=0 for dense-only (step 2) behavior.
         """
         pinned: list[Document] = []
         seen: set[str] = set()
@@ -225,10 +247,6 @@ ANSWER:"""
                 if section and section not in seen:
                     seen.add(section)
                     pinned.append(doc)
-                # Also try bare decimal if "Section 12.12.010" style stored as decimal
-                if re.match(r"^\d", sid):
-                    continue
-                # no-op; municipal store uses decimal ids
 
         search_queries = [question]
         question_lower = question.lower()
@@ -289,15 +307,73 @@ ANSWER:"""
         k_per = max(3, (k * 2) // max(1, len(search_queries)))
         dense_docs = self.batch_search(search_queries, k_per_query=k_per)
 
+        use_hybrid = (
+            self.use_hybrid
+            and self.bm25_index is not None
+            and self.bm25_index.ready
+        )
+
+        if not use_hybrid:
+            merged = list(pinned)
+            for doc in dense_docs:
+                section = doc.metadata.get("section")
+                if section in seen:
+                    continue
+                seen.add(section)
+                merged.append(doc)
+            return merged[:k]
+
+        # BM25 over original question + same light expansions (dedupe queries)
+        bm25_pool_k = max(20, k * 3)
+        bm25_by_section: dict[str, Document] = {}
+        bm25_ranking: list[str] = []
+        for q in search_queries:
+            for hit in self.bm25_index.search(q, k=bm25_pool_k):
+                section = hit.document.metadata.get("section")
+                if not section or section in bm25_by_section:
+                    continue
+                bm25_by_section[section] = hit.document
+                bm25_ranking.append(section)
+
+        dense_by_section = {
+            d.metadata.get("section"): d
+            for d in dense_docs
+            if d.metadata.get("section")
+        }
+        dense_ranking = [d.metadata.get("section") for d in dense_docs]
+
+        fused = rrf_fuse([dense_ranking, bm25_ranking], rrf_k=60)
+        doc_lookup = {**bm25_by_section, **dense_by_section}
+
         merged = list(pinned)
-        for doc in dense_docs:
-            section = doc.metadata.get("section")
+        for section, rrf_score in fused:
             if section in seen:
                 continue
+            doc = doc_lookup.get(section)
+            if not doc:
+                # Prefer BM25 store / chroma exact get as fallback
+                if self.bm25_index:
+                    doc = self.bm25_index.get_by_section(section)
+                if not doc:
+                    got = self.get_docs_by_section(section)
+                    doc = got[0] if got else None
+            if not doc:
+                continue
+            meta = dict(doc.metadata)
+            meta["rrf_score"] = float(rrf_score)
+            in_dense = section in dense_by_section
+            in_bm25 = section in bm25_by_section
+            if in_dense and in_bm25:
+                meta["match_type"] = "hybrid"
+            elif in_bm25:
+                meta["match_type"] = "bm25"
+            else:
+                meta["match_type"] = meta.get("match_type") or "dense"
+            merged.append(Document(page_content=doc.page_content, metadata=meta))
             seen.add(section)
-            merged.append(doc)
+            if len(merged) >= k:
+                break
 
-        # Pinned (exact id) stay first; remaining already distance-sorted from batch_search
         return merged[:k]
 
     def ask_question(self, question):
