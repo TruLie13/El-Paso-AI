@@ -11,6 +11,7 @@ from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from local_embeddings import LocalEmbeddings
 from hybrid_retriever import BM25Index, rrf_fuse
+from child_chunks import load_parent_store
 
 # Collection name must match ingest.py
 CODE_COLLECTION = "full_sections_final"
@@ -44,6 +45,7 @@ class MunicipalCodeAssistant:
         self.summary_chain = None
         self.use_self_query = False
         self.bm25_index: BM25Index | None = None
+        self.parents: dict[str, Document] = {}
         self.use_hybrid = _env_flag("HYBRID_SEARCH", default=True)
 
     def _create_llm(self):
@@ -108,11 +110,14 @@ class MunicipalCodeAssistant:
 
     def _rebuild_bm25_index(self) -> None:
         """Rebuild sparse index from current Chroma units (same corpus as dense)."""
+        self.parents = load_parent_store(self.db_path)
         self.bm25_index = BM25Index()
         if not self.vectorstore:
             return
         try:
-            n = self.bm25_index.build_from_vectorstore(self.vectorstore)
+            n = self.bm25_index.build_from_vectorstore(
+                self.vectorstore, parents=self.parents
+            )
             if n == 0:
                 self.bm25_index = None
         except Exception:
@@ -160,8 +165,44 @@ ANSWER:"""
                 found.append(sid)
         return found
 
+    def resolve_to_parent(self, doc: Document, *, from_pin: bool = False) -> Document:
+        """
+        Replace a Chroma child with the parent section.
+
+        The matched child text stays on metadata so the prompt can show the
+        span that ranked, after page_content becomes the full section.
+        A section-id pin does not keep a random child's text.
+        """
+        if doc.metadata.get("resolved_parent"):
+            return doc
+        section = doc.metadata.get("section")
+        parent = self.parents.get(section) if section else None
+        meta = dict(doc.metadata)
+        meta["resolved_parent"] = True
+        if parent is None:
+            if from_pin:
+                meta["match_type"] = "section_id"
+            return Document(page_content=doc.page_content, metadata=meta)
+
+        base = dict(parent.metadata)
+        base.update(meta)
+        if section:
+            base["section"] = section
+        base["resolved_parent"] = True
+        if from_pin:
+            base.pop("matched_child_text", None)
+            base["match_type"] = "section_id"
+        else:
+            base["matched_child_text"] = doc.page_content
+            if "chunk_index" in doc.metadata:
+                try:
+                    base["matched_chunk_index"] = int(doc.metadata["chunk_index"])
+                except (TypeError, ValueError):
+                    pass
+        return Document(page_content=parent.page_content, metadata=base)
+
     def get_docs_by_section(self, section_id: str) -> list[Document]:
-        """Exact metadata lookup (no embedding)."""
+        """Exact metadata lookup. Returns the parent section, not each child row."""
         if not self.vectorstore:
             return []
         try:
@@ -171,18 +212,16 @@ ANSWER:"""
             )
         except Exception:
             return []
-        docs: list[Document] = []
-        documents = raw.get("documents") or []
-        metadatas = raw.get("metadatas") or []
-        for content, meta in zip(documents, metadatas):
+        for content, meta in zip(raw.get("documents") or [], raw.get("metadatas") or []):
             if content is None:
                 continue
             metadata = dict(meta or {})
             metadata.setdefault("section", section_id)
             metadata["distance"] = 0.0
             metadata["match_type"] = "section_id"
-            docs.append(Document(page_content=content, metadata=metadata))
-        return docs
+            child = Document(page_content=content, metadata=metadata)
+            return [self.resolve_to_parent(child, from_pin=True)]
+        return []
     
     @lru_cache(maxsize=100)
     def _get_cached_search_variations(self, question_lower_hash):
@@ -310,7 +349,11 @@ ANSWER:"""
             )
 
         search_queries = search_queries[:6]
-        k_per = max(3, (k * 2) // max(1, len(search_queries)))
+        # Unchunked indexes keep the historical pool sizes so CHILD_CHUNKS=0
+        # can reproduce step-3 ranks. Chunked indexes over-fetch children, then
+        # batch_search / the BM25 loop collapse to unique parent section ids.
+        pool_factor = 8 if (self.bm25_index is not None and self.bm25_index.chunked) else 1
+        k_per = max(3, (k * 2) // max(1, len(search_queries))) * pool_factor
         dense_docs = self.batch_search(search_queries, k_per_query=k_per)
 
         use_hybrid = (
@@ -327,10 +370,10 @@ ANSWER:"""
                     continue
                 seen.add(section)
                 merged.append(doc)
-            return merged[:k]
+            return [self.resolve_to_parent(doc) for doc in merged[:k]]
 
         # BM25 over original question + same light expansions (dedupe queries)
-        bm25_pool_k = max(20, k * 3)
+        bm25_pool_k = max(20, k * 3) * pool_factor
         bm25_by_section: dict[str, Document] = {}
         bm25_ranking: list[str] = []
         for q in search_queries:
@@ -380,7 +423,7 @@ ANSWER:"""
             if len(merged) >= k:
                 break
 
-        return merged[:k]
+        return [self.resolve_to_parent(doc) for doc in merged[:k]]
 
     def ask_question(self, question):
         """Optimized main method with faster iteration logic"""
@@ -396,6 +439,7 @@ ANSWER:"""
                 fallback_docs = self.retriever.invoke(question)[:8]  # Limit fallback docs
                 seen_sections = {doc.metadata.get('section') for doc in retrieved_docs}
                 for doc in fallback_docs:
+                    doc = self.resolve_to_parent(doc)
                     if doc.metadata.get('section') not in seen_sections:
                         retrieved_docs.append(doc)
                         if len(retrieved_docs) >= 12:  # Cap total docs
@@ -443,6 +487,7 @@ ANSWER:"""
                 seen_sections = {doc.metadata.get('section') for doc in retrieved_docs}
                 new_docs = []
                 for doc in extra_docs:
+                    doc = self.resolve_to_parent(doc)
                     if doc.metadata.get('section') not in seen_sections:
                         new_docs.append(doc)
                         seen_sections.add(doc.metadata.get('section'))
@@ -494,13 +539,27 @@ ANSWER:"""
         # Limit to top 8 most relevant documents to keep context manageable
         for doc in docs[:8]:
             section = doc.metadata.get('section', 'Unknown')
-            if section not in seen_sections:
-                # Truncate very long sections to keep context focused
-                content = doc.page_content
-                if len(content) > 1000:
-                    content = content[:1000] + "..."
-                context_parts.append(f"Section {section}:\n{content}")
-                seen_sections.add(section)
+            if section in seen_sections:
+                continue
+            seen_sections.add(section)
+            matched = doc.metadata.get("matched_child_text")
+            # Whole sections keep the historical 1000-character trim.
+            # Split sections show the child that actually matched.
+            if (
+                matched
+                and doc.metadata.get("chunk_role") == "child"
+                and doc.metadata.get("match_type") != "section_id"
+            ):
+                title = doc.metadata.get("title") or ""
+                header = f"Section {section}"
+                if title:
+                    header += f" — {title}"
+                context_parts.append(f"{header}:\n{matched}")
+                continue
+            content = doc.page_content
+            if len(content) > 1000:
+                content = content[:1000] + "..."
+            context_parts.append(f"Section {section}:\n{content}")
 
         return "\n\n".join(context_parts)
 

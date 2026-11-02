@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "model_name": "all-MiniLM-L6-v2",
+  "max_tokens": 256,
+  "overlap_tokens": 32,
+  "parents": 3580,
+  "stored_whole": 2315,
+  "split_parents": 1265,
+  "tables_left_whole": 7,
+  "chroma_docs": 10268,
+  "sections_using_clause": 0,
+  "sections_using_sentence": 2,
+  "sections_using_hard": 1,
+  "clause_pieces": 0,
+  "sentence_pieces": 25,
+  "hard_pieces": 1,
+  "parent_vectors": 1265
+}

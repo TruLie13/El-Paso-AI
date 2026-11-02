@@ -128,6 +128,7 @@ Examples:
 | Check search quality | `python verify_step2.py --compare-dense --compare-plain` |
 | App | `python main.py` |
 | Dense-only search | `HYBRID_SEARCH=0 python main.py` |
+| Child chunks (off by default) | `CHILD_CHUNKS=1 python ingest.py` |
 
 ---
 
@@ -136,7 +137,7 @@ Examples:
 | Item | Status |
 | --- | --- |
 | Re-OCR the PDF | Not needed |
-| Child chunk / parent section (step 4) | Future |
+| Child chunk / parent section (step 4) | Built, off. Tail hit@8 rose; golden hit@1 fell. Opt in with `CHILD_CHUNKS=1` and reingest |
 | Smarter “needs more search” loop (step 5) | Future |
 | UI only shows sections sent to the LLM (step 6) | Future |
 | Optional “codes only, no AI” mode | Discussed, not built |

@@ -55,6 +55,7 @@ class BM25Index:
         self._docs: list[Document] = []
         self._section_to_idx: dict[str, int] = {}
         self._bm25: BM25Okapi | None = None
+        self.chunked = False
 
     def __len__(self) -> int:
         return len(self._docs)
@@ -63,15 +64,21 @@ class BM25Index:
     def ready(self) -> bool:
         return self._bm25 is not None and len(self._docs) > 0
 
-    def build_from_vectorstore(self, vectorstore) -> int:
-        """Load all units from Chroma and build BM25. Returns doc count."""
+    def build_from_vectorstore(self, vectorstore, parents: dict | None = None) -> int:
+        """
+        Load Chroma and build BM25. Returns doc count.
+
+        When the index contains child chunks and a parent store is present,
+        BM25 runs on one full parent per section. Dense search still sees
+        children. Unchunked indexes keep one Chroma row per section, which
+        is the same text.
+        """
         raw = vectorstore.get(include=["documents", "metadatas"])
         documents = raw.get("documents") or []
         metadatas = raw.get("metadatas") or []
 
         docs: list[Document] = []
-        corpus: list[list[str]] = []
-        section_to_idx: dict[str, int] = {}
+        chunked = False
 
         for content, meta in zip(documents, metadatas):
             if not content:
@@ -79,21 +86,54 @@ class BM25Index:
             metadata = dict(meta or {})
             section = metadata.get("section") or f"anon:{len(docs)}"
             metadata["section"] = section
-            doc = Document(page_content=content, metadata=metadata)
-            section_to_idx[section] = len(docs)
-            docs.append(doc)
-            corpus.append(tokenize(content))
+            try:
+                chunk_count = int(metadata.get("chunk_count") or 1)
+            except (TypeError, ValueError):
+                chunk_count = 1
+            if chunk_count > 1:
+                chunked = True
+            docs.append(Document(page_content=content, metadata=metadata))
 
         if not docs:
             self._docs = []
             self._section_to_idx = {}
             self._bm25 = None
+            self.chunked = False
             return 0
 
-        self._docs = docs
+        if chunked and parents:
+            parent_docs = [
+                doc for doc in parents.values() if doc.page_content and doc.metadata.get("section")
+            ]
+            if parent_docs:
+                return self._fit(parent_docs, chunked=True)
+
+        return self._fit(docs, chunked=chunked)
+
+    def _fit(self, docs: list[Document], *, chunked: bool) -> int:
+        corpus: list[list[str]] = []
+        section_to_idx: dict[str, int] = {}
+        indexed: list[Document] = []
+        for doc in docs:
+            metadata = dict(doc.metadata)
+            section = metadata.get("section") or f"anon:{len(indexed)}"
+            metadata["section"] = section
+            if section in section_to_idx:
+                continue
+            section_to_idx[section] = len(indexed)
+            indexed.append(Document(page_content=doc.page_content, metadata=metadata))
+            corpus.append(tokenize(doc.page_content))
+        if not indexed:
+            self._docs = []
+            self._section_to_idx = {}
+            self._bm25 = None
+            self.chunked = False
+            return 0
+        self._docs = indexed
         self._section_to_idx = section_to_idx
         self._bm25 = BM25Okapi(corpus)
-        return len(docs)
+        self.chunked = chunked
+        return len(indexed)
 
     def search(self, query: str, k: int = 20) -> list[BM25Hit]:
         if not self.ready or not query.strip():

@@ -118,6 +118,8 @@ flowchart TD
 
 Hybrid search is **on by default** (dense + BM25 fused with RRF). Set `HYBRID_SEARCH=0` for dense search plus section-id pinning only.
 
+Child chunking (`child_chunks.py`) is implemented and **off by default**. With `CHILD_CHUNKS=1` at ingest, prose sections longer than the MiniLM window are embedded as children, `chroma_db/parent_units.jsonl` holds the parent text, and search collapses back to the parent section. A measured run improved tail-sentence retrieval and lowered golden hit@1, so the flag stays off until that tradeoff is accepted. See the improvement plan.
+
 1. **Section-id pin** — extract ids from the question → Chroma `get(where={"section": ...})` → `match_type=section_id`.
 2. **Dense** — `similarity_search_with_score`; store `metadata.distance` (lower = closer).
 3. **BM25** — `BM25Index` built from all Chroma units on `initialize()`; same corpus as the vectors.
@@ -151,6 +153,7 @@ Env
   OLLAMA_MODEL / OLLAMA_BASE_URL
   GOOGLE_API_KEY / GOOGLE_MODEL   only for Google path
   HYBRID_SEARCH              default on; 0/false disables BM25+RRF
+  CHILD_CHUNKS               default off; 1 plus reingest embeds child chunks
 ```
 
 Embeddings on the primary path do not require Google.
@@ -159,7 +162,6 @@ Embeddings on the primary path do not require Google.
 
 These are not part of the running system (see the improvement plan if pursuing them):
 
-- Child-chunk embed / parent-section return
 - Cross-encoder re-ranking
 - SelfQuery gated on answer sufficiency instead of document count
 - TUI limited to sections that entered the LLM context

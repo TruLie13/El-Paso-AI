@@ -22,7 +22,7 @@ D  Answer + UX          STEP 5–6 — one repair loop, then grounded display
 | **1** | Document-unit hygiene | B | `ingest.py` (+ shared preprocessor) | **Yes** (wipe+rebuild) | Everything that measures retrieval |
 | **2** | Retrieval P0 | C | `municipal_code_assistant.py` search/rank | No (unless metadata shape changed in step 1 — already rebuilt) | P1 metrics |
 | **3** | Retrieval P1 hybrid | C | search + sparse index built at ingest | **Yes** if sparse index is produced at ingest | P2 optional |
-| **4** | Retrieval P2 chunking | C | ingest chunking + retriever parent lookup | **Yes** | — |
+| **4** | Retrieval P2 chunking | C | ingest, parent store, search collapse, prompt span | **Yes** | — |
 | **5** | Unified answer repair loop | D | `ask_question` + checks | No | Clean UX wiring |
 | **6** | Grounded UI sections | D | assistant return shape + `tui_interface.py` | No | — |
 
@@ -38,7 +38,7 @@ These are non-negotiable while we evolve the system:
 
 1. **Chroma replace, not append.** `ingest.py` already `rmtree`s `chroma_db/`. Every ingest step assumes a full rebuild. No migration scripts.
 2. **Keep `metadata["section"]` as the stable unit id** (string). SelfQuery, dedupe, citations, and TUI all key off it today. Add fields (`title`, `content_type`, `heading_dialect`) — don’t rename `section` without a coordinated pass.
-3. **Keep `LocalEmbeddings` + collection name** (`full_sections_final`) through steps 1–3 unless step 4 explicitly upgrades embeddings (then reingest + smoke test).
+3. **Keep `LocalEmbeddings` + collection name** (`full_sections_final`) through steps 1–4. Step 4 reads that embedder’s window; it does not swap models. A later embedding change is its own reingest + smoke test.
 4. **One retrieval entry point.** Evolve `smart_search_code` / `batch_search` in place (or a single replacement used everywhere). Don’t leave SelfQuery, BM25, and dense on three divergent code paths with different ranking.
 5. **One answer repair loop.** Step 5 owns “should we search again?” Phrase-sniff, SelfQuery-on-count, and citation failure all collapse into that design — no stacked competing triggers.
 6. **Assistant → TUI contract is additive first.** Prefer adding `context_docs` (what the LLM saw) while still returning `documents` (pool) until step 6 switches the UI; avoids breaking `main.py` mid-refactor.
@@ -155,29 +155,99 @@ Measure **before** wipe (old splitter / old DB) and **after** reingest. Gains mu
 
 ---
 
-## Step 4 — Retrieval P2 (finer grain on good units)
+## Step 4 — Retrieval P2 (conditional child chunks)
 
 | | |
 | --- | --- |
-| **Status** | `proposed` |
+| **Status** | `measured — off` |
 | **Pipeline** | C |
-| **Depends on** | Steps 1 + 3 (hybrid proven or explicitly kept)
+| **Where** | `local_embeddings.py`, `ingest.py`, parent store, `smart_search_code` / `BM25Index`, `_format_retrieved_docs` |
+| **Depends on** | Steps 1 + 3 (hybrid proven or explicitly kept) |
+
+Search grain and answer grain stay different. The heading unit from step 1 is always the parent: that is what we cite and what `metadata.section` means. A child exists only so a sentence past the embedder window can be found. Short sections are stored whole. This is not an El Paso chunk size; the threshold is whatever embedder ingest is about to use.
 
 **Work**
 
-1. Child chunks for embedding; parent unit for LLM context  
-2. Optional stronger embeddings (explicit reingest)  
-3. Richer metadata already started in step 1 (`title`, `content_type`)
+1. **Window from the live embedder.** `LocalEmbeddings.max_tokens()` and `count_tokens()` delegate to the wrapped function (Chroma `ONNXMiniLM_L6_V2` is 256 today). If the wrapper has no `max_tokens()`, ingest fails unless `EMBED_MAX_TOKENS` is set. Record model name and window in the ingest stats. Swapping models still means a full wipe+reingest; the new run reads the new window. No model upgrade in this step.
+   - **Count with truncation off.** That MiniLM tokenizer is built with `enable_truncation(max_length=256)`. A count through the truncated tokenizer reports 256 for every long section, the fit check passes, and ingest stores today’s units unchanged. Measure the real length, then decide.
+   - The budget is `max_tokens()` minus the `"section - title"` prefix and minus the overlap. A child that ignores either is truncated again at embed time.
+2. **One policy function, called only from ingest,** after `segment_into_units`:
+   - Body plus prefix fits in the budget → one vector, same as today.
+   - Longer **prose** → split so each child fits. Prefer paragraph breaks. Many sections are one block of `(A)` / `(B)` clauses with no blank line; a paragraph-only split leaves that block over the window and MiniLM truncates it again. If a piece still does not fit, split on the next boundary (clause, then sentence). Sample a few long sections before tuning overlap, and record how many pieces needed the fallback.
+   - Overlap is small (~32 tokens) and only covers the cut.
+   - `content_type=table` stays one unit. Do not split rows off their headers.
+   - Each child keeps parent `metadata.section`, `title`, `heading_dialect`, `content_type`, and adds `chunk_index` / `chunk_count`.
+3. **Parent text beside Chroma.** Chroma holds the text that was embedded (the child, or the whole section when it was not split). Full parent bodies go in a store wiped and rewritten in the same ingest as `chroma_db/` (Chroma metadata is the wrong place for the long body). `BM25Index` keeps reading Chroma, so it sees children.
+4. **Over-fetch, then collapse, then one parent resolve.**
+   - Dense and BM25 both search children. `batch_search` and the BM25 pool are small today (`k` per query, BM25 pool `max(20, k*3)`). After chunking, those slots can fill with several pieces of one long section and the right parent never reaches top 8. Pull a wider child pool, then collapse to unique parent section ids (best child rank wins) before RRF. `rrf_fuse` already scores section ids.
+   - **One resolve function** turns a Chroma hit into the parent document. It sits on every path that can leave the assistant with `page_content`: the section-id pin, the fusion fallback, and the SelfQuery docs `ask_question` still appends when fewer than 5 docs come back. `get_docs_by_section` returns every child, and the pin currently keeps the first row Chroma happens to return. `BM25Index.get_by_section` keeps only the last row for a section id. Either bug leaves a fragment in the prompt while the golden section-id questions still rank 1.
+   - Copy the winning `chunk_index` (or the matched child text) onto the parent metadata before discarding the child body. The prompt step needs that identity after `page_content` becomes the full section.
+5. **Matched span in the prompt.** `_format_retrieved_docs` currently keeps the first 1,000 characters of each section, which drops the sentence step 4 just found. Format parent id and title, then the matched child (it already fits the embedder window).
+6. **Rollback is an ingest flag.** `CHILD_CHUNKS=0` at ingest indexes parent documents exactly as step 3 does. Setting it only at query time on an already-chunked database does not restore step 3. A regression does not require reverting step 1 or hybrid; it requires a reingest with the flag off.
 
 **Play-nice / non-break**
 
-- Retriever must resolve child → parent before `_format_retrieved_docs` / citations (still cite parent `section`).  
-- SelfQuery metadata filters stay on parent ids.  
-- Sparse index in step 3 must index the same grain you search (document policy in one place).
+- Still wipe+rebuild `chroma_db/` and collection `full_sections_final`. Parent store is part of that same replace, not a second database.
+- `metadata.section` stays the parent id. SelfQuery filters stay on parent ids. SelfQuery hits still pass through the same parent resolve as other Chroma reads.
+- Dense and sparse index the same grain (children when chunking is on; parents when `CHILD_CHUNKS=0`). Fusion and the answer loop still speak in parent section ids.
+- Do not add a second retriever (`ParentDocumentRetriever` or a side index). Chunk policy lives in one ingest function. Parent resolve lives in one function used by every Chroma read on the answer path.
+- Genre-agnostic: no city chunk sizes, no fixed character width tuned on this code. A shorter SaaS corpus mostly stays whole because its sections fit the window.
 
-**Acceptance**
+**Verification (freeze before any step 4 ingest)**
 
-- Beats step 3 on golden set enough to justify complexity/re-ingest  
+Step 4 wipes `chroma_db/`. Capture both baselines first. Compare hybrid `smart_search_code` only. Plain `similarity_search` lists several chunks of one section and makes hit@k look worse for a reason that is not the ranker. No LLM in the rank comparison.
+
+1. **Golden regression set** — the 10 questions in `golden_questions.py` (same set as `docs/step3_after.json`). Historical hybrid result is hit@1 80% / hit@3 100% / hit@8 100%; only the two fire-hydrant questions are rank 2, and the two section-id questions never touch the embedder. Re-run on the live database and keep that file. Do not trust the October numbers if the database has moved.
+
+   ```bash
+   python verify_step2.py --json-out docs/step4_before.json
+   ```
+
+   After implementation, the same command writes `docs/step4_after.json`. Diff **per-question rank**, not only the percentages.
+
+2. **Tail set (this is the contribution test).** The golden set is already saturated, so a tie there does not show that child chunks helped. Before wiping the database, build `docs/step4_tail_queries.json` from the current units, then freeze it. The after run uses that file unchanged.
+
+   - Start from prose sections longer than the live window (truncation off, same count as ingest). Skip tables.
+   - Candidate query: a sentence from past the first `max_tokens()`, not one that also appears inside that prefix.
+   - Drop boilerplate that repeats across many sections (“as provided in this chapter” matches everywhere and cannot rise).
+   - Score the candidates with today’s `smart_search_code` and **keep the misses**: outside top 8. Cap the file at a few dozen. A distinctive sentence is often already found by BM25 on the full parent; scoring every long section dilutes the lift and can hide a real dense-search gain. The interesting rows are the ones the current hybrid does not already return.
+   - Save the query, the parent section id, and the token offset.
+
+   Ranks now → `docs/step4_tail_before.json` (these should be misses by construction). After step 4 → `docs/step4_tail_after.json`.
+
+3. **Prompt span, and the pin path.** Rank does not prove the model saw the sentence. `_format_retrieved_docs` currently keeps the first 1,000 characters. On a handful of tail queries, save the formatted context before and after. After step 4 the tail sentence must appear in that string. Separately, a section-id question (`12.44.020`) must resolve to the parent body. Golden rank stays 1 even when the pin returns the first child fragment, so rank diff will not catch that.
+
+4. **Ingest stats** on the step 4 run: embedder name, `max_tokens()`, parents split vs stored whole, tables left whole, and how many pieces needed the clause or sentence fallback. A fallback count of zero on a corpus of long single blocks means the splitter never saw past the paragraph boundary.
+
+5. **Rollback proof.** Reingest with `CHILD_CHUNKS=0` (ingest time, not a query-time switch) and score the golden file again. Ranks must match `docs/step4_before.json`. That is the path that puts retrieval back without reverting step 1 or hybrid. If the flag does not reproduce the before file, the rollback is not real and step 4 does not ship.
+
+**Keep step 4 only if all of these hold**
+
+- Golden: no question’s rank gets worse than `docs/step4_before.json`. A tie is acceptable. A drop is not.
+- Tail: hit@8 (and ideally hit@3) rises versus `docs/step4_tail_before.json`. If the tail set does not improve, chunking is not earning the parent store.
+- Prompt: sampled tail sentences show up in the formatted context. A section-id pin returns the parent body, not the first child row.
+- `CHILD_CHUNKS=0` reingest (not a query-time flag) reproduces the golden before-file.
+
+**If those fail:** reingest with `CHILD_CHUNKS=0`, confirm golden ranks match `docs/step4_before.json`, and do not leave chunking on. Code can stay behind the flag or be reverted; the running index must match the before file.
+
+**Measurement (2026-11-01) — chunking left off**
+
+Code is in place (`child_chunks.py`, parent store, parent resolve, prompt span). Default is **off**. `CHILD_CHUNKS=1 python ingest.py` turns it on. The running index was reingested with the flag off.
+
+| Check | Before | With child chunks | Rollback (`CHILD_CHUNKS` off) |
+| --- | --- | --- | --- |
+| Golden hit@1 / hit@3 / hit@8 | 80% / 100% / 100% (`docs/step4_before.json`) | **50% / 100% / 100%** (`docs/step4_after.json`) | Exact per-question match to the before file (`docs/step4_rollback.json`) |
+| Tail set (30 current top-8 misses) | 0% hit@8 by construction (`docs/step4_tail_before.json`) | **57% / 70% / 93%**, 2 still missing (`docs/step4_tail_after.json`) | — |
+| Section-id pin `12.44.020` | — | Parent body, not a child row | — |
+| Prompt span (5 tail samples) | — | Exact sentence string absent from formatted context | — |
+
+Golden ranks that dropped: fence height 1→2, hydrant question 2→3, “shit outside” 1→2, public urination 1→3. Nothing fell out of the top 8. Ingest with chunking on: 3,580 parents, 1,265 split, 9,003 Chroma rows, window 256, almost all splits on paragraph breaks (`docs/step4_ingest_stats.json`). Clause fallback was not needed on this corpus.
+
+Tail retrieval got better. Golden hit@1 got worse, and the sampled prompts did not contain the exact tail sentence, so the keep rule failed. Chunking stays behind the flag.
+
+**Follow-up (same day) — parent vector + parent BM25.** Dense search kept the whole-section vector and the children, and took the closer one per section. BM25 ran on the full parent only. Result (`docs/step4b_after.json`, `docs/step4b_tail_after.json`): golden hit@1 / hit@3 / hit@8 = **60% / 90% / 100%**. Fence height returned to rank 1. The hydrant question fell to rank 4 (was 2). Tail hit@8 fell to **87%** (4 missing), below the children-only run. Parent keyword search gave back some easy ranks and gave up some of the tail lift. Still fails the keep rule. Index reingested with the flag off.
+
+**Out of scope here:** embedding model swap, answer repair (step 5), TUI grounding (step 6).
 
 ---
 
@@ -252,7 +322,7 @@ Neither reliably means “missing answer,” and stacking both would double-spen
 | Re-OCR El Paso PDF | Character quality OK; stage B is the bottleneck |
 | Growing hard-coded topic query maps | Fights genre-agnostic goal; sparse search supersedes |
 | Dual DB (`chroma_db_final_structured`) | Confuses primary path |
-| Embedding model swap before step 1–3 | Forces reingest without knowing if units/hybrid were the issue |
+| Embedding model swap inside step 4 | Step 4 only reads the current window. A model swap is a separate reingest once units and hybrid are already measured |
 | Separate SelfQuery count gate **and** citation loop | Conflicting triggers; merged in step 5 |
 
 ---

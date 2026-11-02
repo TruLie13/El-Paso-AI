@@ -1,0 +1,491 @@
+{
+  "summary": {
+    "n": 30,
+    "hit_at_1": 0.5666666666666667,
+    "hit_at_3": 0.7,
+    "hit_at_8": 0.9333333333333333,
+    "missing": 2
+  },
+  "details": [
+    {
+      "question": "Subject property: east of\n\n                               Oregon Street and west of Mesa Street.",
+      "want": "12.32.070",
+      "rank": 1,
+      "top": [
+        "12.32.070",
+        "12.88.030",
+        "Section 20.04.260",
+        "12.88.180",
+        "12.88.010",
+        "20.10.146",
+        "Section 39",
+        "12.88.020"
+      ],
+      "token_offset": 264
+    },
+    {
+      "question": "The east side of Piedras Street from the northerly alley line between Cypress Avenue and Findley Avenue to a point 40 feet north thereof;\n\n                 53.",
+      "want": "12.88.060",
+      "rank": 1,
+      "top": [
+        "12.88.060",
+        "12.88.030",
+        "12.88.010",
+        "12.88.180",
+        "12.64.020",
+        "12.88.150",
+        "12.88.200",
+        "12.88.220"
+      ],
+      "token_offset": 1004
+    },
+    {
+      "question": "\"Special event\" means any bazaar, block party, street dance, sidewalk sale, show, exhibition, festival, concert, celebration, or other event that requires the\n\n                  full or partial closure or occupation of a public right-of-way and is not classified as a film-making event, temporary event, or private property event as\n\n             defined by other chapters of this title.",
+      "want": "13.38.020",
+      "rank": 1,
+      "top": [
+        "13.38.020",
+        "13.32.010",
+        "13.38.030",
+        "13.30.010",
+        "20.02.998",
+        "13.38.050",
+        "13.24.010",
+        "13.36.010"
+      ],
+      "token_offset": 377
+    },
+    {
+      "question": "The director shall include in the notice the reason for\n\n                the suspension or revocation, the scope of the suspension, the date the director orders the suspension or revocation to begin, the duration of any\n\n                suspension, and a statement informing the holder and any suspended courtesy vehicle or transportation-for-hire vehicle operator of the right of\n\n    appeal.",
+      "want": "14.16.406",
+      "rank": 1,
+      "top": [
+        "14.16.406",
+        "5.18.050",
+        "7.15.150",
+        "5.16.080",
+        "5.10.150",
+        "Section 14.16.110",
+        "7.15.080",
+        "5.03.100"
+      ],
+      "token_offset": 769
+    },
+    {
+      "question": "\"Harmful quantity\" means, for purposes of this chapter, discharges of oil, motor fuel, or other petroleum products in such quantities that the stormwater\n\n   administrator has determined may be harmful to the public health or welfare of the public or the environment include discharges of such products that are of\n\n   sufficient quantity to:\n\n                a.",
+      "want": "15.20.070",
+      "rank": 1,
+      "top": [
+        "15.20.070",
+        "Section 261.4",
+        "15.20.100",
+        "15.20.010",
+        "15.20.080",
+        "15.20.090",
+        "15.12.055",
+        "15.20.040"
+      ],
+      "token_offset": 736
+    },
+    {
+      "question": ".300, pertained to similar\n\n            subject matter and derived from Ord.",
+      "want": "18.02.115",
+      "rank": 5,
+      "top": [
+        "2.04.050",
+        "18.08.300",
+        "18.10.400",
+        "9.48.270",
+        "18.02.115",
+        "20.02.298",
+        "2.30.090",
+        "20.02.906"
+      ],
+      "token_offset": 257
+    },
+    {
+      "question": "Such fees shall be in accordance with the fee schedule\n\n             established pursuant to budget resolution or other resolution adopted by the city council.",
+      "want": "18.18.345",
+      "rank": 6,
+      "top": [
+        "19.37.070",
+        "9.12.125",
+        "13.28.030",
+        "9.12.035",
+        "13.36.030",
+        "18.18.345",
+        "9.04.530",
+        "9.52.240"
+      ],
+      "token_offset": 263
+    },
+    {
+      "question": "A geotechnical report prepared by an engineer indicating the types and characteristics of the soil formations with\n\n                 substantiating data and opinion as to slopes, fills, excavations to safely construct the proposed development of the site and the stabilization measure\n\n                 to be used.",
+      "want": "18.44.070",
+      "rank": 3,
+      "top": [
+        "18.44.200",
+        "19.24.040",
+        "18.44.070",
+        "18.21.160",
+        "18.08.190",
+        "20.10.500",
+        "19.24.030",
+        "19.24.010"
+      ],
+      "token_offset": 1129
+    },
+    {
+      "question": "At least eight days prior to the meeting of the city plan commission during which the final plat is scheduled for review, the applicant shall provide to\n\n                the city manager, or designee a copy meeting submission requirements of the final plat, with revisions made based on staff comments and\n\n               recommendations.",
+      "want": "19.04.020",
+      "rank": 1,
+      "top": [
+        "19.04.020",
+        "19.03.020",
+        "19.04.030",
+        "19.03.030",
+        "19.06.030",
+        "19.01.060",
+        "19.05.030",
+        "19.04.040"
+      ],
+      "token_offset": 413
+    },
+    {
+      "question": "On streets within neighborhoods that meet the criteria in Title 20 for infill development, where a street construction project, whether local, state or\n\n                  federal, has been awarded and the project includes construction of the sidewalks; and\n\n                7.",
+      "want": "19.21.010",
+      "rank": 1,
+      "top": [
+        "19.21.010",
+        "13.04.070",
+        "13.04.045",
+        "20.10.280",
+        "19.26.020",
+        "19.21.040",
+        "19.15.150",
+        "19.21.020"
+      ],
+      "token_offset": 492
+    },
+    {
+      "question": "The proposed rezoning meets the\n\n                                       intent of the future land use designation for the\n\n                                                city's comprehensive plan.",
+      "want": "2.44.080",
+      "rank": null,
+      "top": [
+        "20.04.360",
+        "20.04.200",
+        "20.04.380",
+        "9.40.080",
+        "19.02.010",
+        "19.02.020",
+        "Section 5.02.170",
+        "20.10.500"
+      ],
+      "token_offset": 266
+    },
+    {
+      "question": "If any provision of this section is declared by a court of law to be illegal, void, invalid, or unconstitutional or in\n\n              violation of the City Charter, such holding shall not affect the validity of the remaining portions of this section, and such remaining portions shall remain\n\n               in full force and effect.",
+      "want": "2.92.070",
+      "rank": 1,
+      "top": [
+        "2.92.070",
+        "10.20.052",
+        "1.01.070",
+        "5.09.200",
+        "9.04.950",
+        "10.12.030",
+        "18.46.330",
+        "5.13.190"
+      ],
+      "token_offset": 1200
+    },
+    {
+      "question": "Omitted\n\n   019532     \u20028-15-2023        An Ordinance amending Title 12 (Vehicles and        1                   12.85.010\n\n                                               Traffic), Chapter 12.85 (Parking Violations Bureau), to\n\n                            amend Section 12.85.010 (Parking Violations Bureau\n\n                                        Established), Section 12.85.020 (Hearing Officers),",
+      "want": "20.02.724",
+      "rank": 3,
+      "top": [
+        "12.85.010",
+        "12.85.020",
+        "20.02.724",
+        "Section 9.20.100",
+        "20.18.510",
+        "Section 2.04.010",
+        "Section 14.04.040",
+        "Section 12.58.060"
+      ],
+      "token_offset": 1665
+    },
+    {
+      "question": "Minimum building setbacks:\n\n                            a)  Front,\n\n                          b) Rear,\n\n                               c) Cumulative front and rear,\n\n                          d)  Side-interior,\n\n                            e)  Side-street,\n\n                                       f) Cumulative side setbacks,\n\n                             g) Garage;\n\n                             vi.",
+      "want": "20.04.200",
+      "rank": 4,
+      "top": [
+        "21.80.210",
+        "21.80.215",
+        "Section 20.10.625",
+        "20.04.200",
+        "21.80.220",
+        "21.50.060",
+        "2.16.050",
+        "19.23.040"
+      ],
+      "token_offset": 473
+    },
+    {
+      "question": "The distance between the place of business where alcoholic beverages are sold and a school, day-care center or child-care facility shall be measured\n\n                   in direct line from the property line of the school, day-care center or child-care facility to the property line of the place of business, and in a direct line\n\n                across intersections.",
+      "want": "20.10.060",
+      "rank": 1,
+      "top": [
+        "20.10.060",
+        "20.10.140",
+        "20.02.192",
+        "9.12.780",
+        "9.12.010",
+        "20.10.165",
+        "9.12.070",
+        "20.10.265"
+      ],
+      "token_offset": 892
+    },
+    {
+      "question": "On-premises advertising for a residential mixed-use\n\n               development consisting of residential uses physically integrated with office and commercial uses, whether wholly or partially, shall be restricted in the\n\n             same manner as described above except that the maximum sign area permitted per street frontage shall be twenty square feet.",
+      "want": "20.10.550",
+      "rank": 1,
+      "top": [
+        "20.10.550",
+        "20.18.450",
+        "20.10.320",
+        "20.18.500",
+        "20.18.430",
+        "20.10.363",
+        "20.18.490",
+        "20.04.300"
+      ],
+      "token_offset": 957
+    },
+    {
+      "question": "bulletin billboards, spaced a minimum of six thousand feet apart, are permitted on Loop 375 from Interstate Highway 10 to\n\n            Montana.",
+      "want": "20.18.220",
+      "rank": 1,
+      "top": [
+        "20.18.220",
+        "12.88.110",
+        "20.18.270",
+        "12.88.180",
+        "20.18.250",
+        "20.18.240",
+        "20.18.200",
+        "12.88.150"
+      ],
+      "token_offset": 257
+    },
+    {
+      "question": "Location: shall not project more than eighteen inches from the face of the wall or the surface of the canopy or awning; shall be erected in such a\n\n             manner that building fenestration is not obscured and the architectural integrity of the building is not altered; shall not extend beyond the edges of\n\n                the structure;\n\n                5.",
+      "want": "20.18.430",
+      "rank": 6,
+      "top": [
+        "20.18.460",
+        "20.18.480",
+        "20.18.490",
+        "20.18.470",
+        "20.18.440",
+        "20.18.430",
+        "20.12.040",
+        "20.16.030"
+      ],
+      "token_offset": 672
+    },
+    {
+      "question": "Location: Shall be securely attached to a building facade, shall be erected in such a manner that building fenestration is not obscured and the\n\n                  architectural integrity of the building is not altered; shall not extend beyond the edges of the structure no portion shall extend beyond the roof plane\n\n                or outside the building envelope;\n\n                5.",
+      "want": "20.18.500",
+      "rank": 1,
+      "top": [
+        "20.18.500",
+        "20.18.460",
+        "20.18.480",
+        "20.18.470",
+        "20.18.440",
+        "20.18.430",
+        "20.18.490",
+        "Section 20.18.050"
+      ],
+      "token_offset": 1763
+    },
+    {
+      "question": "Building heights shall be limited to the height requirements established in Federal Aviation Regulations Part 77 or successor regulations for the\n\n                   airport.",
+      "want": "21.50.070",
+      "rank": 1,
+      "top": [
+        "21.50.070",
+        "14.08.030",
+        "20.12.030",
+        "21.80.230",
+        "20.10.700",
+        "21.80.110",
+        "20.16.030",
+        "20.16.020"
+      ],
+      "token_offset": 813
+    },
+    {
+      "question": "\"Registered agent\" means the person identified by the owner of a convenience store in the registration filed pursuant to this chapter that is authorized to receive\n\n  on behalf of the owner any legal process and/or notice required or provided for in this chapter.",
+      "want": "5.18.020",
+      "rank": 1,
+      "top": [
+        "5.18.020",
+        "5.18.030",
+        "5.18.040",
+        "5.09.040",
+        "18.40.030",
+        "14.16.402",
+        "5.18.050",
+        "20.10.060"
+      ],
+      "token_offset": 431
+    },
+    {
+      "question": "Any animal may be transferred by an animal welfare organization to the department or to another animal welfare organization before the minimum\n\n                holding time required under this section, provided however the receiving organization or the department must continue to hold the animal for such\n\n                  additional time as to meet the minimum requirements of this title.",
+      "want": "7.14.020",
+      "rank": 1,
+      "top": [
+        "7.14.020",
+        "7.16.020",
+        "7.14.090",
+        "7.08.020",
+        "7.14.040",
+        "9.04.370",
+        "7.04.090",
+        "7.14.010"
+      ],
+      "token_offset": 475
+    },
+    {
+      "question": "A determination of suspension or revocation\n\n              of a permit issued under this section may be appealed to the city manager in accordance with the procedures established in Section 7.04.100 of this\n\n   (Ord.",
+      "want": "7.24.050",
+      "rank": 5,
+      "top": [
+        "7.04.100",
+        "5.16.080",
+        "Section 14.16.110",
+        "18.44.110",
+        "7.24.050",
+        "5.01.090",
+        "5.03.100",
+        "5.08.030"
+      ],
+      "token_offset": 489
+    },
+    {
+      "question": "It is\n\n                  essentially the closing or protecting of all openings in the exterior walls and foundations or the grates in any sidewalk or business buildings, with rat-\n\n                proofing materials installed in such a manner as to prevent rats from gaining entrance.",
+      "want": "9.28.010",
+      "rank": 1,
+      "top": [
+        "9.28.010",
+        "9.28.030",
+        "20.16.020",
+        "9.28.050",
+        "9.28.070",
+        "9.28.080",
+        "9.28.060",
+        "18.44.200"
+      ],
+      "token_offset": 369
+    },
+    {
+      "question": ",\n\n                                       Franklin Heights, City of El Paso, El Paso County,\n\n                                     Texas, pursuant to Section 20.10.280 of the El Paso\n\n                                          City Code.",
+      "want": "9.48.250",
+      "rank": 7,
+      "top": [
+        "20.10.280",
+        "Section 15.08.125",
+        "Section 20.20.080",
+        "Section 20.10.260",
+        "20.08.030",
+        "18.18.120",
+        "9.48.250",
+        "Section 13.08.090"
+      ],
+      "token_offset": 257
+    },
+    {
+      "question": "019835     \u20021-20-2026        An Ordinance amending Title 7 (Animals), Chapter     1   Added          7.12.070\n\n                                     7.12 (Dogs and Cats), to add Section 7.12.070 (Vicious\n\n                                     Dogs); and an Ordinance amending Title 7 (Animals),\n\n                                  Chapter 7.12 (Dogs and Cats), to add Section",
+      "want": "Section 1",
+      "rank": 3,
+      "top": [
+        "7.12.070",
+        "2.40.090",
+        "Section 1",
+        "Section 29",
+        "12.85.090",
+        "Section 7.08.050",
+        "17.12.130",
+        "15.20.150"
+      ],
+      "token_offset": 322
+    },
+    {
+      "question": "Danielson Survey No 310, City of El\n\n                                    Paso, El Paso County, Texas from A-O/sc\n\n                                      (Apartments-Office/special contract) to C-1/sc\n\n                                    (Commercial/special contract) and imposing a\n\n                                       condition.",
+      "want": "Section 13.08.090",
+      "rank": null,
+      "top": [
+        "Section 12.30.060",
+        "9.04.400",
+        "14.16.421",
+        "20.10.680",
+        "20.04.360",
+        "20.04.150",
+        "Section 18.18.400",
+        "Section 9"
+      ],
+      "token_offset": 797
+    },
+    {
+      "question": "18476      \u20023-\u20028-2016        An Ordinance amending Title 3 (Revenue And        1                   3.46.020B\n\n                                       Finance), Chapter 3.46 (Wage Theft) in order to\n\n                            amend Section 3.46.020(B) Duties of the Wage Theft\n\n                                   Coordinator to include additional duties, amend",
+      "want": "Section 20.10.360",
+      "rank": 4,
+      "top": [
+        "3.46.020",
+        "3.46.080",
+        "3.46.070",
+        "Section 20.10.360",
+        "3.46.040",
+        "3.46.010",
+        "Section 3.46.030",
+        "18.18.120"
+      ],
+      "token_offset": 312
+    },
+    {
+      "question": "(Definitions)\n\n                                      to amend the definition of residential property of the\n\n                                             El Paso City Code; the penalty as provided in",
+      "want": "Section 3.04.042",
+      "rank": 2,
+      "top": [
+        "7.04.010",
+        "Section 3.04.042",
+        "Section 19.08.020",
+        "19.20.060",
+        "Section 25",
+        "2.30.060",
+        "Section 22",
+        "19.10.050"
+      ],
+      "token_offset": 257
+    },
+    {
+      "question": "244, City of El\n\n                                    Paso, El Paso County, Texas from R-5/c\n\n                                        (Residential/conditions) to C-2/c\n\n                                     (Commercial/conditions) and from R-5/sp\n\n                                        (Residential/special permit) to C-2 (Commercial) and\n\n                                  imposing conditions.",
+      "want": "Section 5.02.170",
+      "rank": 1,
+      "top": [
+        "Section 5.02.170",
+        "Section 12.30.060",
+        "Section 12.88.180",
+        "20.10.680",
+        "21.10.040",
+        "Section 47",
+        "Section 12.84.010",
+        "12.85.065"
+      ],
+      "token_offset": 1532
+    }
+  ]
+}

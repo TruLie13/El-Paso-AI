@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import time
@@ -6,8 +7,10 @@ from tqdm import tqdm
 
 import fitz  # PyMuPDF
 from langchain_chroma import Chroma
+
 from local_embeddings import LocalEmbeddings
 from document_units import segment_into_units, structural_stats
+from child_chunks import expand_units_for_index, write_parent_store
 
 # --- CONFIGURATION ---
 PDF_PATH = "data/EP_Ordinances.pdf"
@@ -105,11 +108,39 @@ def main():
     if not documents:
         raise RuntimeError("No document units produced — aborting ingest.")
 
-    # Stage C: wipe + rebuild Chroma (replace, not append)
+    # Stage C: child chunks only when a prose parent exceeds the embedder window.
+    print("\nStep 4: Deciding child chunks from the live embedder window...")
+    embeddings = LocalEmbeddings()
+    index_docs, parents, chunk_stats = expand_units_for_index(documents, embeddings)
+    print(
+        f"  model={chunk_stats['model_name']} max_tokens={chunk_stats['max_tokens']} "
+        f"enabled={chunk_stats['enabled']}"
+    )
+    print(
+        f"  parents={chunk_stats['parents']} stored_whole={chunk_stats['stored_whole']} "
+        f"split={chunk_stats['split_parents']} tables_whole={chunk_stats['tables_left_whole']}"
+    )
+    print(
+        f"  chroma_docs={chunk_stats['chroma_docs']} "
+        f"clause_sections={chunk_stats['sections_using_clause']} "
+        f"sentence_sections={chunk_stats['sections_using_sentence']} "
+        f"hard_sections={chunk_stats['sections_using_hard']}"
+    )
+    stats_name = (
+        "docs/step4b_ingest_stats.json"
+        if chunk_stats["enabled"]
+        else "docs/step4_rollback_ingest_stats.json"
+    )
+    os.makedirs("docs", exist_ok=True)
+    with open(stats_name, "w", encoding="utf-8") as handle:
+        json.dump(chunk_stats, handle, indent=2)
+    print(f"  wrote {stats_name}")
+
+    # Wipe + rebuild Chroma (replace, not append), then write the parent store
+    # into the same directory so the next wipe removes both.
     print("\nSetting up ChromaDB with local embeddings (wipe + rebuild)...")
     if os.path.exists(DB_PATH):
         shutil.rmtree(DB_PATH)
-    embeddings = LocalEmbeddings()
     vectorstore = Chroma(
         collection_name=COLLECTION_NAME,
         embedding_function=embeddings,
@@ -118,9 +149,12 @@ def main():
 
     print("\nAdding documents in batches... (Embedding and Indexing)")
     batch_size = 50
-    for i in tqdm(range(0, len(documents), batch_size), desc="Adding Batches"):
-        batch = documents[i : i + batch_size]
+    for i in tqdm(range(0, len(index_docs), batch_size), desc="Adding Batches"):
+        batch = index_docs[i : i + batch_size]
         vectorstore.add_documents(batch)
+
+    parent_path = write_parent_store(DB_PATH, parents)
+    print(f"Parent store: {parent_path} ({len(parents)} sections)")
 
     print("\n--- FINAL INGESTION COMPLETE ---")
     print(f"Database ready at: {DB_PATH}")
