@@ -426,125 +426,109 @@ ANSWER:"""
         return [self.resolve_to_parent(doc) for doc in merged[:k]]
 
     def ask_question(self, question):
-        """Optimized main method with faster iteration logic"""
+        """
+        Unified answer loop (step 5).
+
+        Retrieve once → generate → at most one repair if the answer is
+        insufficient. SelfQuery runs only when the first retrieve is empty.
+        """
         if not self.vectorstore:
             raise RuntimeError("Assistant not initialized. Call initialize() first.")
 
-        # Step 1: Comprehensive initial search (more docs upfront)
         retrieved_docs = self.smart_search_code(question, k=12)
-
-        # Step 2: Fallback with self-query if available
-        if len(retrieved_docs) < 5 and self.use_self_query:
-            try:
-                fallback_docs = self.retriever.invoke(question)[:8]  # Limit fallback docs
-                seen_sections = {doc.metadata.get('section') for doc in retrieved_docs}
-                for doc in fallback_docs:
-                    doc = self.resolve_to_parent(doc)
-                    if doc.metadata.get('section') not in seen_sections:
-                        retrieved_docs.append(doc)
-                        if len(retrieved_docs) >= 12:  # Cap total docs
-                            break
-            except Exception:
-                pass
+        if not retrieved_docs:
+            retrieved_docs = self._early_fallback_search(question)
 
         if not retrieved_docs:
             return {
-                'success': False,
-                'error': 'No relevant documents found',
-                'documents': [],
-                'answer': None,
-                'iterations': 0
+                "success": False,
+                "error": "No relevant documents found",
+                "documents": [],
+                "context_docs": [],
+                "answer": None,
+                "iterations": 0,
+                "repaired": False,
+                "repair_reason": None,
             }
 
-        # Step 3: Generate initial response
         try:
-            context = self._format_retrieved_docs(retrieved_docs)
-            response = self.summary_chain.invoke({
-                "question": question,
-                "context": context
-            })
+            context_docs = self._select_context_docs(retrieved_docs)
+            answer = self._generate_answer(question, context_docs)
+            reason = self.answer_insufficiency_reason(answer, context_docs)
 
-            answer = response.content if hasattr(response, 'content') else str(response)
-
-            # Step 4: Quick check if we need more info (simplified logic)
-            needs_more_info = self._quick_needs_check(answer)
-
-            if not needs_more_info:
+            if reason is None:
                 return {
-                    'success': True,
-                    'documents': retrieved_docs,
-                    'answer': answer,
-                    'error': None,
-                    'iterations': 1
+                    "success": True,
+                    "documents": retrieved_docs,
+                    "context_docs": context_docs,
+                    "answer": answer,
+                    "error": None,
+                    "iterations": 1,
+                    "repaired": False,
+                    "repair_reason": None,
                 }
 
-            # Step 5: One additional targeted search if needed
-            additional_terms = self._extract_quick_search_terms(answer, question)
-            if additional_terms:
-                extra_docs = self.batch_search(additional_terms[:3], k_per_query=2)
+            # One repair retrieve + one regenerate. No stacked SelfQuery/hedge loops.
+            repair_docs = self._repair_retrieve(question, answer, retrieved_docs)
+            if not repair_docs:
+                return {
+                    "success": True,
+                    "documents": retrieved_docs,
+                    "context_docs": context_docs,
+                    "answer": answer,
+                    "error": None,
+                    "iterations": 1,
+                    "repaired": False,
+                    "repair_reason": reason,
+                    "note": "Repair skipped — no new sections found",
+                }
 
-                # Add unique documents
-                seen_sections = {doc.metadata.get('section') for doc in retrieved_docs}
-                new_docs = []
-                for doc in extra_docs:
-                    doc = self.resolve_to_parent(doc)
-                    if doc.metadata.get('section') not in seen_sections:
-                        new_docs.append(doc)
-                        seen_sections.add(doc.metadata.get('section'))
-
-                if new_docs:
-                    all_docs = retrieved_docs + new_docs
-                    context = self._format_retrieved_docs(all_docs)
-
-                    # Generate final answer
-                    final_response = self.summary_chain.invoke({
-                        "question": question,
-                        "context": context
-                    })
-
-                    final_answer = final_response.content if hasattr(final_response, 'content') else str(final_response)
-
-                    return {
-                        'success': True,
-                        'documents': all_docs,
-                        'answer': final_answer,
-                        'error': None,
-                        'iterations': 2
-                    }
-
-            # Return original answer if no improvement found
+            all_docs = retrieved_docs + repair_docs
+            repaired_context = self._select_context_docs(all_docs)
+            repaired_answer = self._generate_answer(question, repaired_context)
             return {
-                'success': True,
-                'documents': retrieved_docs,
-                'answer': answer,
-                'error': None,
-                'iterations': 1,
-                'note': 'Comprehensive search completed'
+                "success": True,
+                "documents": all_docs,
+                "context_docs": repaired_context,
+                "answer": repaired_answer,
+                "error": None,
+                "iterations": 2,
+                "repaired": True,
+                "repair_reason": reason,
             }
 
         except Exception as e:
             return {
-                'success': False,
-                'documents': retrieved_docs,
-                'answer': None,
-                'error': f'Error generating response: {e}',
-                'iterations': 1
+                "success": False,
+                "documents": retrieved_docs,
+                "context_docs": [],
+                "answer": None,
+                "error": f"Error generating response: {e}",
+                "iterations": 1,
+                "repaired": False,
+                "repair_reason": None,
             }
 
-    def _format_retrieved_docs(self, docs):
-        """Optimized document formatting"""
-        context_parts = []
-        seen_sections = set()
-
-        # Limit to top 8 most relevant documents to keep context manageable
-        for doc in docs[:8]:
-            section = doc.metadata.get('section', 'Unknown')
-            if section in seen_sections:
+    def _select_context_docs(self, docs, limit: int = 8) -> list[Document]:
+        """Unique sections that enter the LLM prompt (step 6 grounding set)."""
+        selected: list[Document] = []
+        seen: set[str] = set()
+        for doc in docs:
+            section = doc.metadata.get("section")
+            if not section or section in seen:
                 continue
-            seen_sections.add(section)
+            seen.add(section)
+            selected.append(doc)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    def _format_retrieved_docs(self, docs):
+        """Format context docs for the prompt. Prefers matched child spans when present."""
+        context_parts = []
+        for doc in self._select_context_docs(docs):
+            section = doc.metadata.get("section", "Unknown")
             matched = doc.metadata.get("matched_child_text")
-            # Whole sections keep the historical 1000-character trim.
-            # Split sections show the child that actually matched.
             if (
                 matched
                 and doc.metadata.get("chunk_role") == "child"
@@ -560,65 +544,112 @@ ANSWER:"""
             if len(content) > 1000:
                 content = content[:1000] + "..."
             context_parts.append(f"Section {section}:\n{content}")
-
         return "\n\n".join(context_parts)
 
-    def _quick_needs_check(self, answer):
-        """Simplified check for whether more information is needed"""
-        # Reduced set of indicators for faster processing
-        needs_more_indicators = [
+    def _generate_answer(self, question: str, context_docs: list[Document]) -> str:
+        context = self._format_retrieved_docs(context_docs)
+        response = self.summary_chain.invoke(
+            {"question": question, "context": context}
+        )
+        return response.content if hasattr(response, "content") else str(response)
+
+    def _early_fallback_search(self, question: str) -> list[Document]:
+        """SelfQuery only when the primary retrieve returned nothing."""
+        docs: list[Document] = []
+        if self.use_self_query and self.retriever is not None:
+            try:
+                for doc in self.retriever.invoke(question)[:8]:
+                    docs.append(self.resolve_to_parent(doc))
+            except Exception:
+                pass
+        if docs:
+            return docs
+        # Last resort: wider hybrid pass
+        return self.smart_search_code(question, k=20)
+
+    @staticmethod
+    def _normalize_section_key(section_id: str) -> str:
+        raw = (section_id or "").strip()
+        if raw.lower().startswith("section "):
+            raw = raw.split(None, 1)[1]
+        raw = re.sub(r"^§\s*", "", raw)
+        return raw.strip()
+
+    def answer_insufficiency_reason(
+        self, answer: str, context_docs: list[Document]
+    ) -> str | None:
+        """
+        Why a repair should run, or None if the answer is sufficient.
+
+        Primary: cited a section id that was not in the prompt.
+        Weak backup: hedge phrases only when there is no usable in-context cite.
+        Missing citation alone does not repair (avoids retries on soft answers).
+        Doc count is irrelevant.
+        """
+        if not (answer or "").strip():
+            return "empty_answer"
+
+        context_keys = {
+            self._normalize_section_key(doc.metadata.get("section", ""))
+            for doc in context_docs
+            if doc.metadata.get("section")
+        }
+        context_keys.discard("")
+
+        cited = self.extract_section_ids(answer)
+        cited_keys = [self._normalize_section_key(sid) for sid in cited]
+        usable_cites = [key for key in cited_keys if key in context_keys]
+        if any(key not in context_keys for key in cited_keys):
+            return "cite_not_in_context"
+
+        # Cautious-but-cited answers keep the first pass.
+        if usable_cites:
+            return None
+
+        answer_lower = answer.lower()
+        hedge_markers = (
             "would need to see",
             "need additional sections",
             "not provided in these sections",
-            "additional information"
-        ]
-
-        answer_lower = answer.lower()
-        return any(indicator in answer_lower for indicator in needs_more_indicators)
-    
-    def _extract_quick_search_terms(self, answer, original_question):
-        """Fast extraction of search terms without complex AI processing"""
-        search_terms = []
-        
-        # Extract section numbers mentioned
-        section_matches = re.findall(r'\b(\d+\.\d+\.\d+(?:\.\d+)*)\b', answer)
-        search_terms.extend(section_matches[:2])  # Limit to 2 sections
-        
-        # Topic-based quick mapping
-        question_lower = original_question.lower()
-        
-        if 'fence' in question_lower or 'wall' in question_lower:
-            search_terms.append("fence height zoning")
-        elif 'animal' in question_lower:
-            search_terms.append("animal control ordinance")
-        elif 'business' in question_lower:
-            search_terms.append("business license")
-        elif 'permit' in question_lower:
-            search_terms.append("permit requirements")
-        
-        return search_terms[:3]  # Limit to 3 terms max
-    
-    def _check_if_needs_more_sections(self, answer):
-        """Check if the AI response indicates it needs more information"""
-        needs_more_indicators = [
-            "would need to see",
-            "need to see more sections",
-            "these specific sections do not provide",
-            "does not contain any information about",
-            "would need additional sections",
-            "I would need to see other sections",
-            "these sections don't address",
+            "additional information",
             "need more information",
-            "require additional sections",
-            "not provided in these sections",
+            "these sections do not",
+            "these sections don't",
+            "does not contain any information",
             "would need access to",
-            "additional ordinances",
             "other parts of the code",
-            "need to consult other sections"
-        ]
-        
-        answer_lower = answer.lower()
-        return any(indicator in answer_lower for indicator in needs_more_indicators)
+            "need to consult other sections",
+        )
+        if any(marker in answer_lower for marker in hedge_markers):
+            return "hedge"
+
+        return None
+
+    def _repair_retrieve(
+        self, question: str, answer: str, existing_docs: list[Document]
+    ) -> list[Document]:
+        """One follow-up retrieve: pin cited ids, then hybrid on the question."""
+        seen = {
+            doc.metadata.get("section")
+            for doc in existing_docs
+            if doc.metadata.get("section")
+        }
+        new_docs: list[Document] = []
+
+        for sid in self.extract_section_ids(answer) + self.extract_section_ids(question):
+            for doc in self.get_docs_by_section(sid):
+                section = doc.metadata.get("section")
+                if section and section not in seen:
+                    seen.add(section)
+                    new_docs.append(doc)
+
+        for doc in self.smart_search_code(question, k=12):
+            section = doc.metadata.get("section")
+            if section and section not in seen:
+                seen.add(section)
+                new_docs.append(doc)
+
+        return new_docs
     
     def _extract_section_numbers(self, answer):
         """Extract specific section numbers mentioned in the answer"""

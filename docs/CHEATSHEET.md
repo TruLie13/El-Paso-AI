@@ -126,6 +126,8 @@ Examples:
 | Rebuild DB after unitizer changes | `python ingest.py` (uses OCR cache if present) |
 | Check section quality | `python verify_step1.py` |
 | Check search quality | `python verify_step2.py --compare-dense --compare-plain` |
+| Check answer-loop helpers | `python test_answer_repair.py` |
+| Step 5 smoke (+ optional LLM) | `python verify_step5.py` / `python verify_step5.py --with-llm` |
 | App | `python main.py` |
 | Dense-only search | `HYBRID_SEARCH=0 python main.py` |
 | Child chunks (off by default) | `CHILD_CHUNKS=1 python ingest.py` |
@@ -138,7 +140,7 @@ Examples:
 | --- | --- |
 | Re-OCR the PDF | Not needed |
 | Child chunk / parent section (step 4) | Built, off. Tail hit@8 rose; golden hit@1 fell. Opt in with `CHILD_CHUNKS=1` and reingest |
-| Smarter “needs more search” loop (step 5) | Future |
+| Smarter “needs more search” loop (step 5) | Done — repair on bad cite (or hedge with no cite); `context_docs` returned |
 | UI only shows sections sent to the LLM (step 6) | Future |
 | Optional “codes only, no AI” mode | Discussed, not built |
 

@@ -1,0 +1,174 @@
+{
+  "smart_search_hybrid": {
+    "summary": {
+      "n": 10,
+      "hit_at_1": 0.8,
+      "hit_at_3": 1.0,
+      "hit_at_8": 1.0,
+      "missing": 0
+    },
+    "details": [
+      {
+        "question": "How tall can a residential fence be?",
+        "want": "20.16.030",
+        "rank": 1,
+        "top": [
+          "20.16.030",
+          "20.02.852",
+          "20.02.846",
+          "20.04.830",
+          "19.26.030",
+          "18.08.070",
+          "20.02.370",
+          "20.10.030"
+        ]
+      },
+      {
+        "question": "Can I park near a fire hydrant?",
+        "want": "12.44.020",
+        "rank": 2,
+        "top": [
+          "9.52.170",
+          "12.44.020",
+          "19.20.050",
+          "12.80.040",
+          "12.44.010",
+          "12.68.030",
+          "12.80.050",
+          "14.20.140"
+        ]
+      },
+      {
+        "question": "parking within fifteen feet of a fire hydrant",
+        "want": "12.44.020",
+        "rank": 2,
+        "top": [
+          "9.52.170",
+          "12.44.020",
+          "12.08.220",
+          "12.44.010",
+          "14.20.140",
+          "9.52.180",
+          "12.68.030",
+          "14.24.080"
+        ]
+      },
+      {
+        "question": "can I shit outside",
+        "want": "10.16.090",
+        "rank": 1,
+        "top": [
+          "10.16.090",
+          "15.16.010",
+          "2.84.030",
+          "17.08.130",
+          "17.08.230",
+          "18.21.370",
+          "18.60.130",
+          "5.19.020"
+        ]
+      },
+      {
+        "question": "public urination or defecation prohibited",
+        "want": "10.16.090",
+        "rank": 1,
+        "top": [
+          "10.16.090",
+          "2.84.030",
+          "17.08.130",
+          "17.08.230",
+          "18.21.370",
+          "5.19.020",
+          "9.48.160",
+          "9.04.670"
+        ]
+      },
+      {
+        "question": "dangerous wild animals wolf tiger prohibited",
+        "want": "7.08.090",
+        "rank": 1,
+        "top": [
+          "7.08.090",
+          "7.08.040",
+          "7.12.050",
+          "Section 7.08.020",
+          "7.08.070",
+          "7.08.030",
+          "20.10.290",
+          "7.14.010"
+        ]
+      },
+      {
+        "question": "section 12.12.010 authorized emergency vehicles",
+        "want": "12.12.010",
+        "rank": 1,
+        "top": [
+          "12.12.010",
+          "12.12.020",
+          "9.85.090",
+          "9.85.120",
+          "12.21.050",
+          "12.04.210",
+          "12.72.030",
+          "12.80.040"
+        ]
+      },
+      {
+        "question": "12.44.020",
+        "want": "12.44.020",
+        "rank": 1,
+        "top": [
+          "12.44.020",
+          "5.32.020",
+          "20.02.760",
+          "20.54.020",
+          "20.02.455",
+          "20.50.020",
+          "6.40.060",
+          "\u00a7 2"
+        ]
+      },
+      {
+        "question": "What is a security fence?",
+        "want": "20.02.852",
+        "rank": 1,
+        "top": [
+          "20.02.852",
+          "20.16.030",
+          "18.08.070",
+          "20.02.370",
+          "20.02.846",
+          "20.04.830",
+          "9.52.120",
+          "20.16.010"
+        ]
+      },
+      {
+        "question": "crossing a fire hose with a vehicle",
+        "want": "12.80.050",
+        "rank": 1,
+        "top": [
+          "12.80.050",
+          "9.52.170",
+          "12.08.220",
+          "Section 18.02.102.2",
+          "12.44.010",
+          "12.44.220",
+          "9.52.180",
+          "12.12.010"
+        ]
+      }
+    ]
+  },
+  "ask_smoke": {
+    "success": true,
+    "iterations": 1,
+    "repaired": false,
+    "repair_reason": null,
+    "pool_n": 12,
+    "context_n": 8,
+    "has_context_docs": true,
+    "answer_preview": "A residential fence can be up to eight feet high, according to Section 20.16.030.\n\nControlling section id and rule: Section 20.16.030 - Permitted walls. A screening wall or fence not in excess of eight feet high may be erected around that p",
+    "error": null
+  }
+}

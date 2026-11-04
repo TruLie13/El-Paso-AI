@@ -255,36 +255,36 @@ Tail retrieval got better. Golden hit@1 got worse, and the sampled prompts did n
 
 | | |
 | --- | --- |
-| **Status** | `proposed` |
+| **Status** | `done` |
 | **Pipeline** | D |
-| **Where** | `ask_question`, needs-check helpers, SelfQuery invoke site |
+| **Where** | `ask_question`, `answer_insufficiency_reason`, SelfQuery invoke site |
 | **Depends on** | Step 2+ preferred (repair should re-call the improved search API) |
 
-**Problem today (two competing ideas)**
+**Problem that was there (two competing ideas)**
 
 - SelfQuery when `len(docs) < 5` (quantity)  
 - Second search when answer has hedge phrases (style)  
-Neither reliably means “missing answer,” and stacking both would double-spend LLM/search.
+Neither reliably meant “missing answer,” and stacking both would double-spend LLM/search.
 
-**Single desired loop**
+**Single loop (shipped)**
 
-1. Retrieve via step 2/3 API → format top context → generate  
-2. **Early only:** if retrieval is empty / no-signal → one SelfQuery or broad search before generate  
-3. **After generate:** repair if **insufficient** — prefer citation/support failure (ids missing, cites not in context, claim unsupported); keep phrase-sniff as weak backup only  
-4. At most one repair retrieve + one regenerate unless we later decide otherwise  
+1. Retrieve via hybrid `smart_search_code` → select `context_docs` (top 8 unique) → generate  
+2. **Early only:** if retrieval is empty → one SelfQuery (or wider search) before generate  
+3. **After generate:** repair if **insufficient** — primary `cite_not_in_context`; hedge only when there is no usable in-context cite. `missing_citation` alone does **not** repair (tightened 2026-11-04). Doc count is irrelevant.  
+4. At most one repair retrieve + one regenerate  
 5. Return both `documents` (pool) and `context_docs` (what was formatted into the prompt) for step 6  
 
 **Play-nice / non-break**
 
-- Remove count&lt;5 as primary SelfQuery gate when this ships (don’t leave it beside citation repair).  
-- SelfQuery becomes one **tool** inside this loop, not a parallel policy.  
-- Prompt changes stay provider-agnostic.
+- Removed count&lt;5 as the SelfQuery gate.  
+- SelfQuery is only the empty-retrieve tool.  
+- TUI still reads `documents`; `context_docs` is additive until step 6.
 
-**Acceptance**
+**Acceptance / verification (2026-11-02; gate tightened 2026-11-04)**
 
-- Short-but-sufficient contexts skip repair  
-- Insufficient answers repair regardless of doc count  
-- No double repair from hedge + SelfQuery + citation all firing independently  
+- Unit: `test_answer_repair.py` — sufficient/cited answers skip repair; bad cites repair; hedge without cite repairs; soft no-cite and hedge-with-cite skip; empty answer triggers.  
+- Retrieval unchanged: golden hybrid still 80% / 100% / 100% (`docs/step5_after.json`).  
+- LLM smoke: fence-height ask returned `context_docs` (8) + pool (12), `repaired=False` (`docs/step5_ask_smoke.json`).
 
 ---
 
@@ -383,7 +383,31 @@ Section-id questions rank #1 via metadata fetch. Ready for step 3 (hybrid) when 
 | Smart dense-only (step 2) | 50% | 80% | 100% |
 | **Hybrid (step 3)** | **80%** | **100%** | **100%** |
 
-Notable: fence → #1; “shit outside” → #1; hydrant natural language → #2 (was #4/#7). Ready for step 4 if finer chunking is needed, or step 5 answer-loop work.---
+Notable: fence → #1; “shit outside” → #1; hydrant natural language → #2 (was #4/#7). Ready for step 4 if finer chunking is needed, or step 5 answer-loop work.
+
+### Step 5 — Unified answer repair loop (2026-11-02)
+
+**What changed**
+
+- `ask_question` retrieves once, generates, and runs at most one repair
+- SelfQuery only when the first retrieve is empty (no more count&lt;5 gate)
+- Returns `context_docs` alongside `documents` for step 6
+- Repair gate tightened: bad cite primary; hedge only with no usable cite; no auto-repair on missing citation alone
+- Helpers: `answer_insufficiency_reason`, `_select_context_docs`, `_repair_retrieve`
+- `test_answer_repair.py`, `verify_step5.py`
+
+**Verification**
+
+| Check | Result |
+| --- | --- |
+| Golden hybrid hit@1 / @3 / @8 | 80% / 100% / 100% (unchanged) |
+| Sufficient / soft no-cite / hedge-with-cite | no repair |
+| Cite not in context / hedge without cite | repair reason set |
+| ask_question smoke | `context_docs` present; fence ask `repaired=False` |
+
+Ready for step 6 (TUI shows `context_docs` by default).
+
+---
 
 ## How we use this doc
 

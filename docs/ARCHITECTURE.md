@@ -35,7 +35,7 @@ main.py
               ├── LocalEmbeddings          # Chroma ONNX MiniLM
               ├── Chroma (chroma_db/)      # dense vectors + metadata
               ├── BM25Index                # hybrid_retriever.py; rebuilt on initialize()
-              ├── SelfQueryRetriever       # optional fallback if <5 docs (langchain_classic)
+              ├── SelfQueryRetriever       # empty-retrieve fallback only (langchain_classic)
               └── Chat LLM (_create_llm)
                     default: Ollama (llama3)
                     optional: Gemini (LLM_PROVIDER=google)
@@ -101,17 +101,15 @@ flowchart TD
   B --> RRF
   ID --> M["Pinned first, then fused list"]
   RRF --> M
-  M --> F{"len docs < 5 and\nSelfQuery available?"}
-  F -->|yes| SQ["SelfQueryRetriever"]
-  F -->|no| G["Format top 8 unique sections"]
+  M --> E{"empty retrieve?"}
+  E -->|yes| SQ["SelfQuery or wider search\nonce"]
+  E -->|no| G["Select context_docs\ntop 8 unique sections"]
   SQ --> G
   G --> L1["LLM generate"]
-  L1 --> C{"_quick_needs_check\nhedge phrases?"}
-  C -->|no| Out["Return answer + documents"]
-  C -->|yes| T["Extract terms / section ids"]
-  T --> B2["batch_search again"]
-  B2 --> L2["LLM generate again"]
-  L2 --> Out
+  L1 --> C{"answer insufficient?\nbad cite, or hedge with no cite"}
+  C -->|no| Out["Return answer + documents\n+ context_docs"]
+  C -->|yes| R["One repair retrieve\n+ regenerate"]
+  R --> Out
 ```
 
 ### Retrieval
@@ -125,7 +123,7 @@ Child chunking (`child_chunks.py`) is implemented and **off by default**. With `
 3. **BM25** — `BM25Index` built from all Chroma units on `initialize()`; same corpus as the vectors.
 4. **RRF** — `rrf_fuse(dense_ranking, bm25_ranking)`; `match_type` is `dense`, `bm25`, or `hybrid`.
 5. **Topic expansions** — small hard-coded extra queries for a few topics (fence, animals, public-conduct slang, etc.).
-6. **SelfQuery** — runs only when smart search returns fewer than 5 documents.
+6. **SelfQuery** — only when the primary retrieve returns **no** documents (not when count &lt; 5).
 
 Ranking does **not** use city- or chapter-prefix score bonuses.
 
@@ -133,9 +131,9 @@ Ranking does **not** use city- or chapter-prefix score bonuses.
 
 - **LLM:** Ollama `llama3` by default; Gemini when `LLM_PROVIDER=google` and `GOOGLE_API_KEY` is set.
 - **Prompt:** `_create_summary_chain` defines persona, goal, constraints, and output format — plain-language first sentence, cite the controlling section, short quote if needed, no invented penalties.
-- **LLM context:** top **8** unique sections via `_format_retrieved_docs` (each truncated ~1000 chars).
-- **TUI:** prints every document in `result["documents"]` (the full candidate pool), which can be larger than the 8 sections sent to the model.
-- **Optional second pass:** if the answer matches hedge phrases (`_quick_needs_check`), run one more search and regenerate.
+- **LLM context:** top **8** unique sections as `context_docs` (each truncated ~1000 chars, or the matched child span when chunking is on).
+- **TUI:** still prints `result["documents"]` (the candidate pool). Step 6 will switch the default display to `context_docs`.
+- **Repair (step 5):** at most one follow-up retrieve + regenerate when a cited section id is not in the prompt, or when the answer hedges and has no usable in-context cite. Missing citation alone does not repair. Doc count does not trigger repair.
 
 ## Config & dependencies
 
@@ -163,8 +161,7 @@ Embeddings on the primary path do not require Google.
 These are not part of the running system (see the improvement plan if pursuing them):
 
 - Cross-encoder re-ranking
-- SelfQuery gated on answer sufficiency instead of document count
-- TUI limited to sections that entered the LLM context
+- TUI limited to sections that entered the LLM context (step 6)
 - Codes-only mode with no LLM
 
 ## Extension points
