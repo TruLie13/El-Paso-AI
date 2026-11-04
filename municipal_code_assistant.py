@@ -61,14 +61,15 @@ class MunicipalCodeAssistant:
 
             model = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
             self.llm_provider = f"google:{model}"
-            return ChatGoogleGenerativeAI(model=model, temperature=0.1)
+            # Temperature 0: factual municipal answers; avoid creative invention.
+            return ChatGoogleGenerativeAI(model=model, temperature=0)
 
         from langchain_ollama import ChatOllama
 
         model = os.getenv("OLLAMA_MODEL", "llama3")
         base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         self.llm_provider = f"ollama:{model}"
-        return ChatOllama(model=model, base_url=base_url, temperature=0.1)
+        return ChatOllama(model=model, base_url=base_url, temperature=0)
         
     def initialize(self):
         """Initialize all AI components"""
@@ -129,7 +130,7 @@ class MunicipalCodeAssistant:
             input_variables=["question", "context"],
             template="""You are a practical municipal-code assistant for people who live or work in El Paso. You explain city rules in plain modern English for ordinary residents—not lawyers, and not as a chatbot narrating its own process.
 
-Your goal is to answer the user's QUESTION using only the CODE SECTIONS provided below: say what the rule is, cite the controlling section id, and give usable guidance.
+Your goal is to answer the user's QUESTION using only the CODE SECTIONS provided below. Every concrete rule, number, percentage, distance, deadline, or procedure you state must appear in those sections. If it is not written there, do not say it.
 
 QUESTION: {question}
 
@@ -137,17 +138,23 @@ CODE SECTIONS:
 {context}
 
 Constraints:
-- Use only the provided CODE SECTIONS. Do not invent penalties, exceptions, procedures, or other laws.
+- Use only the provided CODE SECTIONS. Do not invent penalties, exceptions, procedures, percentages, signature counts, distances, fees, or other laws from memory or general knowledge.
+- You may cite a controlling section id only if that exact id appears in the CODE SECTIONS above.
 - Do not open with filler such as "Based on the provided sections", "I can confidently say", "As an AI", or a standalone YES/NO.
 - Do not dump an entire section unless a short excerpt is needed for proof.
 - Do not add a repetitive "In conclusion…" wrap-up.
-- If the sections do not actually answer the question, say what is missing in one sentence instead of guessing.
+- If the sections do not actually answer the question: say that in one plain sentence, say what is missing, and do not state any concrete rule or number. In that case write "Controlling section: none".
 
-Output format:
-1. One plain-language answer sentence (prefer the user's wording when possible).
+Output format (when the sections answer the question):
+1. One plain-language answer sentence grounded only in the sections (prefer the user's wording when possible).
 2. The controlling section id and a brief statement of the rule.
 3. Optional: 1–3 short quoted lines from that section for proof.
 4. Optional: penalties only if they appear in the provided sections.
+
+Output format (when the sections do not answer):
+1. One sentence that the provided sections do not cover this.
+2. Controlling section: none
+3. Optional: one sentence on what kind of rule is missing.
 
 ANSWER:"""
         )
@@ -452,7 +459,9 @@ ANSWER:"""
             }
 
         try:
-            context_docs = self._select_context_docs(retrieved_docs)
+            context_docs = self._with_prompt_excerpts(
+                self._select_context_docs(retrieved_docs), question
+            )
             answer = self._generate_answer(question, context_docs)
             reason = self.answer_insufficiency_reason(answer, context_docs)
 
@@ -484,7 +493,9 @@ ANSWER:"""
                 }
 
             all_docs = retrieved_docs + repair_docs
-            repaired_context = self._select_context_docs(all_docs)
+            repaired_context = self._with_prompt_excerpts(
+                self._select_context_docs(all_docs), question
+            )
             repaired_answer = self._generate_answer(question, repaired_context)
             return {
                 "success": True,
@@ -523,31 +534,119 @@ ANSWER:"""
                 break
         return selected
 
-    def _format_retrieved_docs(self, docs):
-        """Format context docs for the prompt. Prefers matched child spans when present."""
+    @staticmethod
+    def excerpt_for_query(content: str, question: str, limit: int = 1200) -> str:
+        """
+        Take a prompt/display window from a long section.
+
+        Prefer the span that best matches query terms. Leading truncation alone
+        drops buried rules (e.g. Section 2.1 recall sits past the first 1000 chars).
+        """
+        text = content or ""
+        if len(text) <= limit:
+            return text
+
+        terms = [
+            t.lower()
+            for t in re.findall(r"[a-z0-9]+(?:\.[a-z0-9]+)*", (question or "").lower())
+            if len(t) > 2
+        ]
+        # Keep distinctive legal words even if short list after stopword-ish filter.
+        stop = {
+            "the",
+            "and",
+            "for",
+            "how",
+            "many",
+            "what",
+            "when",
+            "where",
+            "with",
+            "from",
+            "that",
+            "this",
+            "have",
+            "need",
+            "city",
+            "code",
+        }
+        terms = [t for t in terms if t not in stop]
+        lower = text.lower()
+        best_start = 0
+        best_score = -1
+        for term in terms:
+            start = 0
+            while True:
+                idx = lower.find(term, start)
+                if idx < 0:
+                    break
+                window_start = max(0, idx - limit // 4)
+                window = lower[window_start : window_start + limit]
+                score = sum(window.count(t) for t in terms)
+                # Prefer denser windows; break ties toward earlier matches.
+                if score > best_score or (score == best_score and window_start < best_start):
+                    best_score = score
+                    best_start = window_start
+                start = idx + len(term)
+
+        if best_score <= 0:
+            excerpt = text[:limit]
+            return excerpt + ("..." if len(text) > limit else "")
+
+        excerpt = text[best_start : best_start + limit]
+        prefix = "..." if best_start > 0 else ""
+        suffix = "..." if best_start + limit < len(text) else ""
+        return f"{prefix}{excerpt}{suffix}"
+
+    def _with_prompt_excerpts(
+        self, docs: list[Document], question: str, limit: int = 1200
+    ) -> list[Document]:
+        """Annotate context docs with the excerpt the LLM will see."""
+        annotated: list[Document] = []
+        for doc in docs:
+            meta = dict(doc.metadata)
+            matched = meta.get("matched_child_text")
+            if (
+                matched
+                and meta.get("chunk_role") == "child"
+                and meta.get("match_type") != "section_id"
+            ):
+                excerpt = matched
+            else:
+                excerpt = self.excerpt_for_query(doc.page_content, question, limit=limit)
+            meta["prompt_excerpt"] = excerpt
+            annotated.append(
+                Document(page_content=doc.page_content, metadata=meta)
+            )
+        return annotated
+
+    def _format_retrieved_docs(self, docs, question: str = ""):
+        """Format context docs for the prompt. Uses query-aware excerpts on long units."""
         context_parts = []
         for doc in self._select_context_docs(docs):
             section = doc.metadata.get("section", "Unknown")
-            matched = doc.metadata.get("matched_child_text")
-            if (
-                matched
-                and doc.metadata.get("chunk_role") == "child"
-                and doc.metadata.get("match_type") != "section_id"
-            ):
-                title = doc.metadata.get("title") or ""
-                header = f"Section {section}"
-                if title:
-                    header += f" — {title}"
-                context_parts.append(f"{header}:\n{matched}")
-                continue
-            content = doc.page_content
-            if len(content) > 1000:
-                content = content[:1000] + "..."
-            context_parts.append(f"Section {section}:\n{content}")
+            title = doc.metadata.get("title") or ""
+            header = f"Section {section}"
+            if title:
+                header += f" — {title}"
+            excerpt = doc.metadata.get("prompt_excerpt")
+            if not excerpt:
+                matched = doc.metadata.get("matched_child_text")
+                if (
+                    matched
+                    and doc.metadata.get("chunk_role") == "child"
+                    and doc.metadata.get("match_type") != "section_id"
+                ):
+                    excerpt = matched
+                else:
+                    excerpt = self.excerpt_for_query(
+                        doc.page_content, question, limit=1200
+                    )
+            context_parts.append(f"{header}:\n{excerpt}")
         return "\n\n".join(context_parts)
 
     def _generate_answer(self, question: str, context_docs: list[Document]) -> str:
-        context = self._format_retrieved_docs(context_docs)
+        context = self._format_retrieved_docs(context_docs, question=question)
         response = self.summary_chain.invoke(
             {"question": question, "context": context}
         )
@@ -619,8 +718,28 @@ ANSWER:"""
             "would need access to",
             "other parts of the code",
             "need to consult other sections",
+            "not specified in these",
+            "do not address",
+            "don't address",
         )
-        if any(marker in answer_lower for marker in hedge_markers):
+        hedged = any(marker in answer_lower for marker in hedge_markers)
+
+        # Concrete legal-looking claims with no in-context cite → likely invention.
+        # Catches the recall/25% style failure even when the model also hedges.
+        unsupported_claim = bool(
+            re.search(
+                r"(\d+\s*%|"
+                r"\bat least\s+\d+|"
+                r"\bwithin\s+\d+|"
+                r"\b\d+\s+(feet|foot|days?|hours?|signatures?|votes?)\b|"
+                r"\bsignatures?\s+from\b)",
+                answer_lower,
+            )
+        )
+        if unsupported_claim:
+            return "unsupported_claim"
+
+        if hedged:
             return "hedge"
 
         return None

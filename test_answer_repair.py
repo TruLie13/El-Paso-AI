@@ -36,9 +36,18 @@ def main() -> None:
     )
     assert asst.answer_insufficiency_reason(hedge, context) == "hedge"
 
-    # Soft answer with no cite → do not repair (missing_citation dropped).
+    # Soft answer with no cite and no concrete legal number → do not repair.
     no_cite = "Yes, you can build that fence in a residential area."
     assert asst.answer_insufficiency_reason(no_cite, context) is None
+
+    # Invented threshold + "not in sections" (recall/25% failure mode).
+    invented = (
+        "To recall a city representative, gather signatures from at least 25% "
+        "of the total votes cast.\n\n"
+        "Controlling Section ID: None\n"
+        "Note: The provided code sections do not address recall procedures."
+    )
+    assert asst.answer_insufficiency_reason(invented, context) == "unsupported_claim"
 
     # Hedge but already cited an in-context section → keep first pass.
     hedge_cited = (
@@ -47,7 +56,8 @@ def main() -> None:
     )
     assert asst.answer_insufficiency_reason(hedge_cited, context) is None
 
-    gap = "The provided sections do not answer this question."
+    # Honest gap with no invented numbers → keep (no second LLM burn).
+    gap = "The provided sections do not answer this question.\nControlling section: none"
     assert asst.answer_insufficiency_reason(gap, context) is None
 
     empty = asst.answer_insufficiency_reason("   ", context)

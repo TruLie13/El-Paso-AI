@@ -129,11 +129,11 @@ Ranking does **not** use city- or chapter-prefix score bonuses.
 
 ### Generation
 
-- **LLM:** Ollama `llama3` by default; Gemini when `LLM_PROVIDER=google` and `GOOGLE_API_KEY` is set.
-- **Prompt:** `_create_summary_chain` defines persona, goal, constraints, and output format — plain-language first sentence, cite the controlling section, short quote if needed, no invented penalties.
+- **LLM:** Ollama `llama3` by default; Gemini when `LLM_PROVIDER=google` and `GOOGLE_API_KEY` is set. **Temperature 0** (deterministic; reduces invention).
+- **Prompt:** `_create_summary_chain` — answer only from provided sections; no invented numbers/procedures; if sections do not answer, say so and write `Controlling section: none` with no concrete rule.
 - **LLM context:** top **8** unique sections as `context_docs` (each truncated ~1000 chars, or the matched child span when chunking is on).
-- **TUI:** still prints `result["documents"]` (the candidate pool). Step 6 will switch the default display to `context_docs`.
-- **Repair (step 5):** at most one follow-up retrieve + regenerate when a cited section id is not in the prompt, or when the answer hedges and has no usable in-context cite. Missing citation alone does not repair. Doc count does not trigger repair.
+- **TUI (step 6):** prints `result["context_docs"]` (sections that entered the prompt) and labels them as the grounding set—not the full retrieve pool. Falls back to `documents` only if `context_docs` is absent.
+- **Repair (step 5):** at most one follow-up retrieve + regenerate when a cited section id is not in the prompt; when there is a concrete numeric/legal claim with no usable cite (`unsupported_claim`); or when the answer hedges with no usable cite. Missing citation alone does not repair. Doc count does not trigger repair.
 
 ## Config & dependencies
 
@@ -161,7 +161,6 @@ Embeddings on the primary path do not require Google.
 These are not part of the running system (see the improvement plan if pursuing them):
 
 - Cross-encoder re-ranking
-- TUI limited to sections that entered the LLM context (step 6)
 - Codes-only mode with no LLM
 
 ## Extension points

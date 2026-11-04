@@ -41,7 +41,7 @@ These are non-negotiable while we evolve the system:
 3. **Keep `LocalEmbeddings` + collection name** (`full_sections_final`) through steps 1–4. Step 4 reads that embedder’s window; it does not swap models. A later embedding change is its own reingest + smoke test.
 4. **One retrieval entry point.** Evolve `smart_search_code` / `batch_search` in place (or a single replacement used everywhere). Don’t leave SelfQuery, BM25, and dense on three divergent code paths with different ranking.
 5. **One answer repair loop.** Step 5 owns “should we search again?” Phrase-sniff, SelfQuery-on-count, and citation failure all collapse into that design — no stacked competing triggers.
-6. **Assistant → TUI contract is additive first.** Prefer adding `context_docs` (what the LLM saw) while still returning `documents` (pool) until step 6 switches the UI; avoids breaking `main.py` mid-refactor.
+6. **Assistant → TUI contract.** `ask_question` returns `documents` (retrieve pool) and `context_docs` (prompt grounding set). The TUI displays `context_docs` by default.
 7. **LLM-agnostic.** Default Ollama; optional Gemini. No step hardcodes a provider.
 8. **Genre-agnostic scoring.** No new city/chapter prefix bonuses. Remove existing ones in step 2 when the cross-encoder (or score-based rank) lands.
 9. **Golden set before claiming wins.** Same fixed questions for step 1 smoke → step 2 baseline → step 3 hybrid lift. Otherwise we can’t tell if hybrid helped.
@@ -278,7 +278,7 @@ Neither reliably meant “missing answer,” and stacking both would double-spen
 
 - Removed count&lt;5 as the SelfQuery gate.  
 - SelfQuery is only the empty-retrieve tool.  
-- TUI still reads `documents`; `context_docs` is additive until step 6.
+- TUI now prefers `context_docs` (step 6); `documents` remains the retrieve pool.
 
 **Acceptance / verification (2026-11-02; gate tightened 2026-11-04)**
 
@@ -292,26 +292,26 @@ Neither reliably meant “missing answer,” and stacking both would double-spen
 
 | | |
 | --- | --- |
-| **Status** | `proposed` |
+| **Status** | `done` |
 | **Pipeline** | D |
 | **Where** | `tui_interface.py` + assistant result dict |
 | **Depends on** | Step 5’s `context_docs` (or equivalent) |
 
-**Work**
+**Work (shipped)**
 
 - Default label/count = sections that grounded the answer (`context_docs`)  
-- Optional disclosure for other retrieved candidates  
+- Do **not** show optional “other candidates” in the TUI (keeps the terminal quiet)  
 - Don’t call the full pool “relevant”
 
 **Play-nice / non-break**
 
-- If `context_docs` absent, fall back to old behavior once; then require the field.  
+- If `context_docs` absent, fall back to `documents` with an INFO note.  
 - No retrieval changes here.
 
-**Acceptance**
+**Acceptance / verification**
 
-- UI count matches shown grounding set  
-- Shown set ⊆ prompt context  
+- `test_grounded_ui.py`: prefers `context_docs`; empty `context_docs` stays empty; missing field falls back to pool.  
+- UI count matches the shown grounding set; shown set is the prompt context when step 5 is present.
 
 ---
 
@@ -405,7 +405,15 @@ Notable: fence → #1; “shit outside” → #1; hydrant natural language → #
 | Cite not in context / hedge without cite | repair reason set |
 | ask_question smoke | `context_docs` present; fence ask `repaired=False` |
 
-Ready for step 6 (TUI shows `context_docs` by default).
+### Step 6 — Grounded UI (2026-11-04)
+
+**What changed**
+
+- TUI displays `context_docs` (prompt grounding set) instead of the full retrieve pool
+- Status text: “Answer grounded in N code sections” — not “relevant sections”
+- Fallback to `documents` only when `context_docs` is absent
+- No extra “other candidates” disclosure in the terminal UI
+- `test_grounded_ui.py`
 
 ---
 

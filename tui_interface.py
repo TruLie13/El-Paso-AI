@@ -21,6 +21,20 @@ class Colors:
     BRIGHT_GREEN = '\033[92m\033[1m'
 
 
+def grounding_docs_from_result(result: dict) -> tuple[list, str]:
+    """
+    Sections to show in the TUI (step 6).
+
+    Prefer context_docs (what entered the LLM prompt). Fall back to the
+    retrieved pool only when that field is absent.
+    """
+    if result is None:
+        return [], "pool"
+    if "context_docs" in result:
+        return list(result.get("context_docs") or []), "context"
+    return list(result.get("documents") or []), "pool"
+
+
 class TUIInterface:
     """Terminal User Interface for Municipal Code Assistant"""
     
@@ -269,12 +283,26 @@ class TUIInterface:
                 if iterations > 1:
                     self.print_status_bar(f"Completed {iterations} search iterations for comprehensive answer", "INFO")
                 
-                self.print_status_bar(f"Found {len(result['documents'])} relevant sections", "SUCCESS")
-                
-                # Display sections
-                for i, doc in enumerate(result['documents'], 1):
+                # Step 6: show sections that grounded the answer, not the full pool.
+                grounding_docs, grounding_source = grounding_docs_from_result(result)
+                if grounding_source == "context":
+                    self.print_status_bar(
+                        f"Answer grounded in {len(grounding_docs)} code section"
+                        f"{'' if len(grounding_docs) == 1 else 's'}",
+                        "SUCCESS",
+                    )
+                else:
+                    self.print_status_bar(
+                        f"Showing {len(grounding_docs)} retrieved section"
+                        f"{'' if len(grounding_docs) == 1 else 's'} "
+                        f"(context_docs unavailable)",
+                        "INFO",
+                    )
+
+                for doc in grounding_docs:
                     section = doc.metadata.get('section', 'N/A')
-                    content = doc.page_content
+                    # Prefer the same query-aware excerpt the model saw.
+                    content = doc.metadata.get("prompt_excerpt") or doc.page_content
                     display_content = content[:600] + "..." if len(content) > 600 else content
                     self.print_section_box("Municipal Code", display_content, section)
                 
